@@ -88,6 +88,7 @@ def get_ORG_entity(tag_seq, char_seq):
 
 
 def get_logger(filename):
+    """ 设置logger, 保存位置 filename，输出格式 """
     logger = logging.getLogger('logger')
     logger.setLevel(logging.DEBUG)
     logging.basicConfig(format='%(message)s', level=logging.DEBUG)

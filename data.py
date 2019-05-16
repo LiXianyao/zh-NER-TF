@@ -1,3 +1,4 @@
+#-*-encoding:utf8-*-#
 import sys, pickle, os, random
 import numpy as np
 
@@ -13,7 +14,7 @@ def read_corpus(corpus_path):
     """
     read corpus and return the list of samples
     :param corpus_path:
-    :return: data
+    :return: data -- 句子数个二元组，每个二元组( [字list]， [tag list] )
     """
     data = []
     with open(corpus_path, encoding='utf-8') as fr:
@@ -103,8 +104,8 @@ def read_dictionary(vocab_path):
 
 
 def random_embedding(vocab, embedding_dim):
-    """
-
+    u"""
+    随机初始化一个均匀分布[-0.25, 0.25]，shape为(字典长*embedding_dim)
     :param vocab:
     :param embedding_dim:
     :return:

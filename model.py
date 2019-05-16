@@ -15,7 +15,7 @@ class BiLSTM_CRF(object):
         self.epoch_num = args.epoch
         self.hidden_dim = args.hidden_dim
         self.embeddings = embeddings
-        self.CRF = args.CRF
+        self.CRF = args.CRF  # CRF使能
         self.update_embedding = args.update_embedding
         self.dropout_keep_prob = args.dropout
         self.optimizer = args.optimizer
@@ -41,10 +41,11 @@ class BiLSTM_CRF(object):
         self.init_op()
 
     def add_placeholders(self):
+        """ 为所有的输入变量设置placeholder """
         self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")
         self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")
-
+        """ 两个超参数 """
         self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
         self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
 

@@ -1,3 +1,4 @@
+#-*-encoding:utf8-*-#
 import tensorflow as tf
 import numpy as np
 import os, argparse, time, random
@@ -36,7 +37,10 @@ args = parser.parse_args()
 
 
 ## get char embeddings
+u""" 读取预处理的word2id文件（实际上是每个字分配一个id) """
 word2id = read_dictionary(os.path.join('.', args.train_data, 'word2id.pkl'))
+
+u""" 随机初始化或者加载预训练的字符embedding """
 if args.pretrain_embedding == 'random':
     embeddings = random_embedding(word2id, args.embedding_dim)
 else:
@@ -48,25 +52,31 @@ else:
 if args.mode != 'demo':
     train_path = os.path.join('.', args.train_data, 'train_data')
     test_path = os.path.join('.', args.test_data, 'test_data')
+    """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
 
 
 ## paths setting
+""" 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
 timestamp = str(int(time.time())) if args.mode == 'train' else args.demo_model
-output_path = os.path.join('.', args.train_data+"_save", timestamp)
-if not os.path.exists(output_path): os.makedirs(output_path)
+output_path = os.path.join('.', args.train_data+"_save", timestamp)  # 模型保存的目录 + 时间戳作为模型的名字
+if not os.path.exists(output_path): os.makedirs(output_path)  # 目录不存在则创建对应目录
+
 summary_path = os.path.join(output_path, "summaries")
 paths['summary_path'] = summary_path
 if not os.path.exists(summary_path): os.makedirs(summary_path)
+
 model_path = os.path.join(output_path, "checkpoints/")
 if not os.path.exists(model_path): os.makedirs(model_path)
 ckpt_prefix = os.path.join(model_path, "model")
 paths['model_path'] = ckpt_prefix
+
 result_path = os.path.join(output_path, "results")
 paths['result_path'] = result_path
 if not os.path.exists(result_path): os.makedirs(result_path)
+
 log_path = os.path.join(result_path, "log.txt")
 paths['log_path'] = log_path
 get_logger(log_path).info(str(args))
