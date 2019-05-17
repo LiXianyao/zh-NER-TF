@@ -33,7 +33,7 @@ class BiLSTM_CRF(object):
 
     def build_graph(self):
         self.add_placeholders()
-        self.lookup_layer_op()
+        self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
         self.biLSTM_layer_op()
         self.softmax_pred_op()
         self.loss_op()
@@ -42,23 +42,24 @@ class BiLSTM_CRF(object):
 
     def add_placeholders(self):
         """ 为所有的输入变量设置placeholder """
-        self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")
-        self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")
-        self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")
+        self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")  # 推测形状：batch*sentlen
+        self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")  # 推测形状：batch*sentlen
+        self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")  # 推测形状：batch
         """ 两个超参数 """
         self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
         self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
 
     def lookup_layer_op(self):
+        """ 定义embedding层的变量（变量作用域"word") """
         with tf.variable_scope("words"):
             _word_embeddings = tf.Variable(self.embeddings,
                                            dtype=tf.float32,
                                            trainable=self.update_embedding,
                                            name="_word_embeddings")
             word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
-                                                     ids=self.word_ids,
+                                                     ids=self.word_ids,  # 输入的loc
                                                      name="word_embeddings")
-        self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout_pl)
+        self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout_pl)  # 套个dropout层后才是最后的embedding层
 
     def biLSTM_layer_op(self):
         with tf.variable_scope("bi-lstm"):
