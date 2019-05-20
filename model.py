@@ -62,17 +62,25 @@ class BiLSTM_CRF(object):
         self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout_pl)  # 套个dropout层后才是最后的embedding层
 
     def biLSTM_layer_op(self):
+        """ 定义BiLSTM层的变量(变量作用域"bi-lstm") """
         with tf.variable_scope("bi-lstm"):
-            cell_fw = LSTMCell(self.hidden_dim)
-            cell_bw = LSTMCell(self.hidden_dim)
+            cell_fw = LSTMCell(self.hidden_dim) # 前向LSTM单元 cell_fw
+            cell_bw = LSTMCell(self.hidden_dim) # 后向LSTM单元 cell_bw
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
                 inputs=self.word_embeddings,
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
-            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)
-            output = tf.nn.dropout(output, self.dropout_pl)
+            """
+            	·输出为(output_fw, output_bw),  (output_fw_state, output_bw_state) 
+            	即一个包含前向cell输出tensor和后向cell输出tensor组成的二元组。
+            	在time_major=False的情形下，每个tensor的shape为（batch* max_time* depth）。depth是词向量的长度
+				·output_fw_state, output_bw_state 则分别是两个方向最后的隐藏状态组成的二元组，类型为LSTMStateTuple(c, h)
+                当句子长度<max_time时，fw_state中的h是output_fw张量中不全为零的最后一行（正向，反向的时候是第一行）
+            """
+            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
+            output = tf.nn.dropout(output, self.dropout_pl) # BiLSTM的结果过个dropout层
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
@@ -84,20 +92,22 @@ class BiLSTM_CRF(object):
                                 shape=[self.num_tags],
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
-
+            """ BiLSTM的输出后接一层全连接，由[-1, 2*hidden_dim]->[-1, 7（num_tags）] """
             s = tf.shape(output)
             output = tf.reshape(output, [-1, 2*self.hidden_dim])
             pred = tf.matmul(output, W) + b
 
-            self.logits = tf.reshape(pred, [-1, s[1], self.num_tags])
+            self.logits = tf.reshape(pred, [-1, s[1], self.num_tags]) # 形状还原回 batch, maxtime, num_tags
 
     def loss_op(self):
+        """CRF层+loss计算"""
         if self.CRF:
-            log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits,
-                                                                   tag_indices=self.labels,
-                                                                   sequence_lengths=self.sequence_lengths)
-            self.loss = -tf.reduce_mean(log_likelihood)
-
+            log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits, # 全连接的结果( batch, maxtime, num_tags)
+                                                                   tag_indices=self.labels, # labels (batch, seqlen,tag_indice)
+                                                                   sequence_lengths=self.sequence_lengths) # seqlen (batch, 1)
+            """对数似然估计值。由于似然函数本身是概率值，取值0~1，故对数化后就变成负无穷~0，但依然保持单调性。 """
+            self.loss = -tf.reduce_mean(log_likelihood)  # 估计值是负数的。故累加到loss就是用减法
+            # reduce_mean本身可以指定保留的维度。不指定的情况下计算所有维度的均值，得到一个标量
         else:
             losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
                                                                     labels=self.labels)
@@ -105,9 +115,10 @@ class BiLSTM_CRF(object):
             losses = tf.boolean_mask(losses, mask)
             self.loss = tf.reduce_mean(losses)
 
-        tf.summary.scalar("loss", self.loss)
+        tf.summary.scalar("loss", self.loss) # 参数可视化：显示这个 标量信息 loss
 
     def softmax_pred_op(self):
+        """Softmax层（对比试验，当不使用CRF时才用）"""
         if not self.CRF:
             self.labels_softmax_ = tf.argmax(self.logits, axis=-1)
             self.labels_softmax_ = tf.cast(self.labels_softmax_, tf.int32)
@@ -130,7 +141,7 @@ class BiLSTM_CRF(object):
             else:
                 optim = tf.train.GradientDescentOptimizer(learning_rate=self.lr_pl)
 
-            grads_and_vars = optim.compute_gradients(self.loss)
+            grads_and_vars = optim.compute_gradients(self.loss)  # 将损失传入优化器
             grads_and_vars_clip = [[tf.clip_by_value(g, -self.clip_grad, self.clip_grad), v] for g, v in grads_and_vars]
             self.train_op = optim.apply_gradients(grads_and_vars_clip, global_step=self.global_step)
 
