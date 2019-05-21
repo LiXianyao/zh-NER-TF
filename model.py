@@ -23,7 +23,7 @@ class BiLSTM_CRF(object):
         self.clip_grad = args.clip
         self.tag2label = tag2label
         self.num_tags = len(tag2label)
-        self.vocab = vocab
+        self.vocab = vocab  # 字典：字->id
         self.shuffle = args.shuffle
         self.model_path = paths['model_path']
         self.summary_path = paths['summary_path']
@@ -217,9 +217,9 @@ class BiLSTM_CRF(object):
 
             sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
             step_num = epoch * num_batches + step + 1
-            feed_dict, _ = self.get_feed_dict(seqs, labels, self.lr, self.dropout_keep_prob)
+            feed_dict, _ = self.get_feed_dict(seqs, labels, self.lr, self.dropout_keep_prob) # 为预定义的每个placeholder绑定数据，将当前batch的输入数据组织成list
             _, loss_train, summary, step_num_ = sess.run([self.train_op, self.loss, self.merged, self.global_step],
-                                                         feed_dict=feed_dict)
+                                                         feed_dict=feed_dict) # session执行op运算，并获得对应op的返回值，其中loss和summary结果要显式使用
             if step + 1 == 1 or (step + 1) % 300 == 0 or step + 1 == num_batches:
                 self.logger.info(
                     '{} epoch {}, step {}, loss: {:.4}, global_step: {}'.format(start_time, epoch + 1, step + 1,
@@ -227,7 +227,7 @@ class BiLSTM_CRF(object):
 
             self.file_writer.add_summary(summary, step_num)
 
-            if step + 1 == num_batches:
+            if step + 1 == num_batches: # 保存下每个epoch最后一个step的模型（写在外面按epoch存不也行？？？）
                 saver.save(sess, self.model_path, global_step=step_num)
 
         self.logger.info('===========validation / test===========')
@@ -236,7 +236,7 @@ class BiLSTM_CRF(object):
 
     def get_feed_dict(self, seqs, labels=None, lr=None, dropout=None):
         """
-
+        为预定义的每个placeholder绑定数据，将当前batch的输入数据组织成list
         :param seqs:
         :param labels:
         :param lr:
@@ -244,22 +244,23 @@ class BiLSTM_CRF(object):
         :return: feed_dict
         """
         word_ids, seq_len_list = pad_sequences(seqs, pad_mark=0)
+        # 对输入字id的list做zero padding到此batch最大句子长度，但是保留每个句子的实际长度
 
         feed_dict = {self.word_ids: word_ids,
                      self.sequence_lengths: seq_len_list}
-        if labels is not None:
-            labels_, _ = pad_sequences(labels, pad_mark=0)
+        if labels is not None: # dev / eval时可能为空
+            labels_, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
             feed_dict[self.labels] = labels_
         if lr is not None:
             feed_dict[self.lr_pl] = lr
         if dropout is not None:
             feed_dict[self.dropout_pl] = dropout
 
-        return feed_dict, seq_len_list
+        return feed_dict, seq_len_list # 在dev/eval时候要使用句子长度，参与计算CRF
 
     def dev_one_epoch(self, sess, dev):
         """
-
+        将验证集用于目前的模型，计算得到对应的标注序列及每个句子的实际长度（用来算CRF）
         :param sess:
         :param dev:
         :return:
@@ -273,7 +274,8 @@ class BiLSTM_CRF(object):
 
     def predict_one_batch(self, sess, seqs):
         """
-
+        通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵
+         使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列和序列的评分
         :param sess:
         :param seqs:
         :return: label_list
@@ -281,12 +283,13 @@ class BiLSTM_CRF(object):
         """
         feed_dict, seq_len_list = self.get_feed_dict(seqs, dropout=1.0)
 
-        if self.CRF:
+        if self.CRF: # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
+            """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
             logits, transition_params = sess.run([self.logits, self.transition_params],
                                                  feed_dict=feed_dict)
             label_list = []
             for logit, seq_len in zip(logits, seq_len_list):
-                viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params)
+                viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
                 label_list.append(viterbi_seq)
             return label_list, seq_len_list
 
@@ -296,7 +299,8 @@ class BiLSTM_CRF(object):
 
     def evaluate(self, label_list, seq_len_list, data, epoch=None):
         """
-
+        检验预测序列结果和实际序列是否一致（生成结果的时候已经使用过了句子长度，已经没用了）
+        对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
         :param label_list:
         :param seq_len_list:
         :param data:
@@ -305,13 +309,13 @@ class BiLSTM_CRF(object):
         """
         label2tag = {}
         for tag, label in self.tag2label.items():
-            label2tag[label] = tag if label != 0 else label
+            label2tag[label] = tag if label != 0 else label # {0:0, 1:"B-PER" ...}
 
         model_predict = []
-        for label_, (sent, tag) in zip(label_list, data):
-            tag_ = [label2tag[label__] for label__ in label_]
+        for label_, (sent, tag) in zip(label_list, data): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
+            tag_ = [label2tag[label__] for label__ in label_] # 将label转换回tag（O以外）
             sent_res = []
-            if  len(label_) != len(sent):
+            if  len(label_) != len(sent): # 异常，特别输出长度对不上的情况
                 print(sent)
                 print(len(label_))
                 print(tag)

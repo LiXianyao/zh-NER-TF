@@ -73,10 +73,10 @@ def vocab_build(vocab_path, corpus_path, min_count):
 
 def sentence2id(sent, word2id):
     """
-
+    字转id，其中数字一律以数字标签处理，英文一律以英文标签处理，
     :param sent:
     :param word2id:
-    :return:
+    :return: 字的id list
     """
     sentence_id = []
     for word in sent:
@@ -117,13 +117,13 @@ def random_embedding(vocab, embedding_dim):
 
 def pad_sequences(sequences, pad_mark=0):
     """
-
     :param sequences:
     :param pad_mark:
     :return:
     """
-    max_len = max(map(lambda x : len(x), sequences))
+    max_len = max(map(lambda x : len(x), sequences)) # 根据当前batch的字id列表的长度，计算当前batch的最大句子长度
     seq_list, seq_len_list = [], []
+    ## 对输入字id的list做zero padding，但是保留每个句子的实际长度 （只是为了创建一个batch的张量不失败？）
     for seq in sequences:
         seq = list(seq)
         seq_ = seq[:max_len] + [pad_mark] * max(max_len - len(seq), 0)
@@ -134,7 +134,8 @@ def pad_sequences(sequences, pad_mark=0):
 
 def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
     """
-
+    处理训练数据为batch数据，包括：句子顺序打乱、标签映射到id，字映射到id
+    数字与英文均分别处理为统一标识符
     :param data:
     :param batch_size:
     :param vocab:
@@ -147,11 +148,11 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
 
     seqs, labels = [], []
     for (sent_, tag_) in data:
-        sent_ = sentence2id(sent_, vocab)
-        label_ = [tag2label[tag] for tag in tag_]
+        sent_ = sentence2id(sent_, vocab) # 句子里的每个字的id构成的list
+        label_ = [tag2label[tag] for tag in tag_] # 句子里每个字的tag的id构成的list
 
         if len(seqs) == batch_size:
-            yield seqs, labels
+            yield seqs, labels # 积累的数据达到batch_size，返回当前积累的数据，并清空当前batch，下次继续
             seqs, labels = [], []
 
         seqs.append(sent_)

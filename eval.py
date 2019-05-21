@@ -3,7 +3,8 @@ import os
 
 def conlleval(label_predict, label_path, metric_path):
     """
-
+    。。。用conlleval_rev.pl的脚本对上面的三元组存档的文件进行计算，结果写结果记录文件，然后读出来输出
+    (我说怎么这么短） 脚本里要求的标注是BIE0所以做了处理，E可以省略
     :param label_predict:
     :param label_path:
     :param metric_path:
