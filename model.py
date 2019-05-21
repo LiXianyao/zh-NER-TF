@@ -183,7 +183,7 @@ class BiLSTM_CRF(object):
 
     def demo_one(self, sess, sent):
         """
-
+        直接预测，并对预测出来的序列进行转码
         :param sess:
         :param sent: 
         :return:
