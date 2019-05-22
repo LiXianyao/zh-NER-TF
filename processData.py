@@ -61,10 +61,40 @@ def sent2char(word_list, tag_list, other_tag, entity_cnt, labels, tag_schema):
             char_tag_list.append(prefix + labels[tag])
     return char_list, char_tag_list, entity_cnt
 
+def vec2id(vec_path, data_path):
+    """ 处理pretrain的vec文件gigaword_chn.all.a2b.uni.ite50.vec，生成一个word2id.pkl和一个 gigaword_chn.npy"""
+    with open(vec_path, "r") as vec_file:
+        word_dict = {}
+        embedding = []
+        for line in vec_file:
+            line = line.strip().split()
+            assert len(line) > 2
+            word = line[0]
+            embedding.append(line[1:])
+            word_dict[word] = len(word_dict)
+        logger.info("数据读取处理完毕，总计有%d个字，每个字的embedding长度为%d"%(len(word_dict), len(embedding[0])))
+        import numpy as np, pickle
+        embedding = np.array(embedding)
+        print(embedding.shape)
+        np.save(data_path + "gigaword_chn.npy", embedding) #保存embedding到文件
+        logger.info("embedding文件保存完毕！")
+        with open(data_path + "word2id.pkl", "wb") as word2id_file:
+            pickle.dump(word_dict, word2id_file)
+        logger.info("word2id文件保存完毕！")
+
+
 if __name__=="__main__":
+    """
     MSRA_original = "data_path/original/testright1.txt"
-    MSRA_input = "data_path/MSRA/input/test_data"
+    MSRA_input = "data_path/MSRA/test_data"
     original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
     # MSRA训练集：各类实体的数据情况如下：{'/nr': 17615, '/ns': 36517, '/nt': 20571, '/o': 1193462}
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
     # cat train_data | grep -n ^.$ > record
+    """
+    vec_path = "data_path/vocb/gigaword_chn.all.a2b.uni.ite50.vec"
+    data_path = "MSRA_data/MSRA/"
+    vec2id(vec_path, data_path)
+    """
+    python3 main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=False --pretrain_embedding=gigaword_chn.npy
+    """
