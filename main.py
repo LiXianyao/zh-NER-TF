@@ -60,7 +60,7 @@ if args.mode != 'demo':
 ## paths setting
 """ 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
-timestamp = str(int(time.time())) if args.mode == 'train' else args.demo_model
+timestamp = time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' else args.demo_model
 output_path = os.path.join('.', args.train_data+"_save", timestamp)  # 模型保存的目录 + 时间戳作为模型的名字
 if not os.path.exists(output_path): os.makedirs(output_path)  # 目录不存在则创建对应目录
 
