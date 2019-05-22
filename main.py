@@ -48,6 +48,8 @@ else:
     embedding_path = os.path.join('.', args.train_data, args.pretrain_embedding)
     embeddings = np.array(np.load(embedding_path), dtype='float32')
     print(embeddings.shape)
+    args.embedding_dim = embeddings.shape[1]
+    args.hidden_dim = args.embedding_dim  # 修正hidden_state的长度
 
 
 ## read corpus and get training data
