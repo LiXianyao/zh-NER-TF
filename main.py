@@ -34,12 +34,13 @@ parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle trai
 parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
 parser.add_argument('--unk', type=str, default='<UNK>', help='the tag for unknown word when a word is missing in the word2id')
+parser.add_argument('--word2id', type=str, default='word2id.pkl', help='word2id file name(same dir with the train_data)')
 args = parser.parse_args()
 
 
 ## get char embeddings
 u""" 读取预处理的word2id文件（实际上是每个字分配一个id) """
-word2id = read_dictionary(os.path.join('.', args.train_data, 'word2id.pkl'))
+word2id = read_dictionary(os.path.join('.', args.train_data, args.word2id))
 
 u""" 随机初始化或者加载预训练的字符embedding """
 if args.pretrain_embedding == 'random':
@@ -49,7 +50,7 @@ else:
     embeddings = np.array(np.load(embedding_path), dtype='float32')
     print(embeddings.shape)
     args.embedding_dim = embeddings.shape[1]
-    args.hidden_dim = args.embedding_dim  # 修正hidden_state的长度
+    #args.hidden_dim = args.embedding_dim  # 修正hidden_state的长度
 
 
 ## read corpus and get training data
