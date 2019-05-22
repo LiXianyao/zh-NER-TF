@@ -190,7 +190,7 @@ class BiLSTM_CRF(object):
         """
         label_list = []
         for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False):
-            label_list_, _ = self.predict_one_batch(sess, seqs)
+            label_list_, _ = self.predict_one_batch(sess, seqs, demo=True)
             label_list.extend(label_list_)
         label2tag = {}
         for tag, label in self.tag2label.items():
@@ -272,7 +272,7 @@ class BiLSTM_CRF(object):
             seq_len_list.extend(seq_len_list_)
         return label_list, seq_len_list
 
-    def predict_one_batch(self, sess, seqs):
+    def predict_one_batch(self, sess, seqs, demo=False):
         """
         通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵
          使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列和序列的评分
@@ -283,19 +283,43 @@ class BiLSTM_CRF(object):
         """
         feed_dict, seq_len_list = self.get_feed_dict(seqs, dropout=1.0)
 
-        if self.CRF: # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
+        if self.CRF:  # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
             """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
             logits, transition_params = sess.run([self.logits, self.transition_params],
                                                  feed_dict=feed_dict)
+            if demo:
+                print("发射矩阵如下", logits, logits.shape)
+                print("转移概率矩阵如下", transition_params, transition_params.shape)
             label_list = []
             for logit, seq_len in zip(logits, seq_len_list):
                 viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
+                if demo:
+                    print("最优序列：", viterbi_seq, "得分为%.4f"%_)
+                    self.print_viterbi_score(viterbi_seq, logit, transition_params)
                 label_list.append(viterbi_seq)
             return label_list, seq_len_list
 
         else:
             label_list = sess.run(self.labels_softmax_, feed_dict=feed_dict)
             return label_list, seq_len_list
+
+    def print_viterbi_score(self, viterbi_seq, logit, transition_params):
+        j = 0
+        sum = 0.
+        sum_seq = "0"
+        for i in range(len(viterbi_seq)):
+            now = viterbi_seq[i]
+            send_score = logit[j][now]
+            sum_seq += "+ %s " % str(send_score)
+            if i + 1 < len(viterbi_seq):
+                next = viterbi_seq[i + 1]
+                trans_score = transition_params[now][next]
+                sum_seq += "+ %s " % str(trans_score)
+                sum += trans_score
+            sum += send_score
+            j += 1
+        sum_seq += "=%s" % str(sum)
+        print ("score 计算式为：%s"%sum_seq)
 
     def evaluate(self, label_list, seq_len_list, data, epoch=None):
         """
