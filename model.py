@@ -189,7 +189,7 @@ class BiLSTM_CRF(object):
         :return:
         """
         label_list = []
-        for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False):
+        for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False, update_embedding=self.update_embedding):
             label_list_, _ = self.predict_one_batch(sess, seqs, demo=True)
             label_list.extend(label_list_)
         label2tag = {}
@@ -212,7 +212,7 @@ class BiLSTM_CRF(object):
         num_batches = (len(train) + self.batch_size - 1) // self.batch_size
 
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle)
+        batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle, update_embedding=self.update_embedding)
         for step, (seqs, labels) in enumerate(batches):
 
             sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
@@ -266,7 +266,7 @@ class BiLSTM_CRF(object):
         :return:
         """
         label_list, seq_len_list = [], []
-        for seqs, labels in batch_yield(dev, self.batch_size, self.vocab, self.tag2label, shuffle=False):
+        for seqs, labels in batch_yield(dev, self.batch_size, self.vocab, self.tag2label, shuffle=False, update_embedding=self.update_embedding):
             label_list_, seq_len_list_ = self.predict_one_batch(sess, seqs)
             label_list.extend(label_list_)
             seq_len_list.extend(seq_len_list_)

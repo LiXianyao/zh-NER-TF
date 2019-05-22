@@ -4,7 +4,7 @@ import numpy as np
 import os, argparse, time, random
 from model import BiLSTM_CRF
 from utils import str2bool, get_logger, get_entity
-from data import read_corpus, read_dictionary, tag2label, random_embedding
+from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
 
 
 ## Session configuration
@@ -44,8 +44,9 @@ u""" 随机初始化或者加载预训练的字符embedding """
 if args.pretrain_embedding == 'random':
     embeddings = random_embedding(word2id, args.embedding_dim)
 else:
-    embedding_path = 'pretrain_embedding.npy'
+    embedding_path = os.path.join('.', args.train_data, args.pretrain_embedding)
     embeddings = np.array(np.load(embedding_path), dtype='float32')
+    print(embeddings.shape)
 
 
 ## read corpus and get training data
@@ -84,6 +85,9 @@ get_logger(log_path).info(str(args))
 
 ## training model
 if args.mode == 'train':
+    count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
+    count_oov(word2id, test_data, log_path, type="test_data")
+
     model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
 

@@ -34,7 +34,7 @@ def read_corpus(corpus_path):
 
 def vocab_build(vocab_path, corpus_path, min_count):
     """
-
+    扫描输入文件，统计字频，构造word2id字典，对小于min_count的字按 unknown处理
     :param vocab_path:
     :param corpus_path:
     :param min_count:
@@ -71,7 +71,25 @@ def vocab_build(vocab_path, corpus_path, min_count):
         pickle.dump(word2id, fw)
 
 
-def sentence2id(sent, word2id):
+def count_oov(word2id, data, log_path, type="train"): ## 统计数据中的oov数量
+    oov_set = set()
+    char_set = set()
+    for sen_, _ in data:
+        for word in sen_:
+            char_set.add(word)
+            if word not in word2id:
+                oov_set.add(word)
+    from utils import get_logger
+    get_logger(log_path).debug("%s数据中总共有%d个不同的字符，其中oov字数共有%d个，占比%.4f" %
+                 (type, len(char_set), len(oov_set), len(oov_set) * 100.0/len(char_set)))
+    oov_str = ""
+    for word in oov_set:
+        oov_str += "," + word
+    print(oov_str)
+
+
+"""  2019-5-22:为了能够和带有单个数字/字母的pretrain char embedding兼容，调整代码结构，在没有预训练词向量的时候保留原功能"""
+def sentence2id(sent, word2id, update_embedding=True):
     """
     字转id，其中数字一律以数字标签处理，英文一律以英文标签处理，
     :param sent:
@@ -80,12 +98,16 @@ def sentence2id(sent, word2id):
     """
     sentence_id = []
     for word in sent:
-        if word.isdigit():
-            word = '<NUM>'
-        elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
-            word = '<ENG>'
-        if word not in word2id:
-            word = '<UNK>'
+        if update_embedding:
+            if word.isdigit():
+                word = '<NUM>'
+            elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
+                word = '<ENG>'
+            if word not in word2id:
+                word = '<UNK>'
+        else:
+            if word not in word2id:
+                word = '</s>'
         sentence_id.append(word2id[word])
     return sentence_id
 
@@ -132,7 +154,7 @@ def pad_sequences(sequences, pad_mark=0):
     return seq_list, seq_len_list
 
 
-def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
+def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, update_embedding=True):
     """
     处理训练数据为batch数据，包括：句子顺序打乱、标签映射到id，字映射到id
     数字与英文均分别处理为统一标识符
@@ -148,7 +170,7 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False):
 
     seqs, labels = [], []
     for (sent_, tag_) in data:
-        sent_ = sentence2id(sent_, vocab) # 句子里的每个字的id构成的list
+        sent_ = sentence2id(sent_, vocab, update_embedding) # 句子里的每个字的id构成的list
         label_ = [tag2label[tag] for tag in tag_] # 句子里每个字的tag的id构成的list
 
         if len(seqs) == batch_size:
