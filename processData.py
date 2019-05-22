@@ -96,5 +96,5 @@ if __name__=="__main__":
     data_path = "MSRA_data/MSRA/"
     vec2id(vec_path, data_path)
     """
-    python3 main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=False --pretrain_embedding=gigaword_chn.npy
+    python3 main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=False --pretrain_embedding=gigaword_chn.npy --unk=</s>
     """

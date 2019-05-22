@@ -107,7 +107,7 @@ def sentence2id(sent, word2id, unk='<UNK>'):
                 word = '<UNK>'
         else:
             if word not in word2id:
-                word = '</s>'
+                word = unk
         sentence_id.append(word2id[word])
     return sentence_id
 
