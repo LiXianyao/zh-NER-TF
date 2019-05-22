@@ -89,7 +89,7 @@ def count_oov(word2id, data, log_path, type="train"): ## 统计数据中的oov�
 
 
 """  2019-5-22:为了能够和带有单个数字/字母的pretrain char embedding兼容，调整代码结构，在没有预训练词向量的时候保留原功能"""
-def sentence2id(sent, word2id, update_embedding=True):
+def sentence2id(sent, word2id, unk='<UNK>'):
     """
     字转id，其中数字一律以数字标签处理，英文一律以英文标签处理，
     :param sent:
@@ -98,7 +98,7 @@ def sentence2id(sent, word2id, update_embedding=True):
     """
     sentence_id = []
     for word in sent:
-        if update_embedding:
+        if unk == '<UNK>':
             if word.isdigit():
                 word = '<NUM>'
             elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
@@ -154,7 +154,7 @@ def pad_sequences(sequences, pad_mark=0):
     return seq_list, seq_len_list
 
 
-def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, update_embedding=True):
+def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, unk='<UNK>'):
     """
     处理训练数据为batch数据，包括：句子顺序打乱、标签映射到id，字映射到id
     数字与英文均分别处理为统一标识符
@@ -170,7 +170,7 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, update_embedd
 
     seqs, labels = [], []
     for (sent_, tag_) in data:
-        sent_ = sentence2id(sent_, vocab, update_embedding) # 句子里的每个字的id构成的list
+        sent_ = sentence2id(sent_, vocab, unk) # 句子里的每个字的id构成的list
         label_ = [tag2label[tag] for tag in tag_] # 句子里每个字的tag的id构成的list
 
         if len(seqs) == batch_size:

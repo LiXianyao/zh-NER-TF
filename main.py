@@ -33,6 +33,7 @@ parser.add_argument('--embedding_dim', type=int, default=300, help='random init 
 parser.add_argument('--shuffle', type=str2bool, default=True, help='shuffle training data before each epoch')
 parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
+parser.add_argument('--unk', type=str, default='<UNK>', help='the tag for unknown word when a word is missing in the word2id')
 args = parser.parse_args()
 
 
