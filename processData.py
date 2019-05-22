@@ -61,7 +61,7 @@ def sent2char(word_list, tag_list, other_tag, entity_cnt, labels, tag_schema):
             char_tag_list.append(prefix + labels[tag])
     return char_list, char_tag_list, entity_cnt
 
-def vec2id(vec_path, data_path):
+def vec2id(vec_path, data_path, name="chn"):
     """ 处理pretrain的vec文件gigaword_chn.all.a2b.uni.ite50.vec，生成一个word2id.pkl和一个 gigaword_chn.npy"""
     with open(vec_path, "r") as vec_file:
         word_dict = {}
@@ -76,9 +76,9 @@ def vec2id(vec_path, data_path):
         import numpy as np, pickle
         embedding = np.array(embedding)
         print(embedding.shape)
-        np.save(data_path + "gigaword_chn.npy", embedding) #保存embedding到文件
+        np.save(data_path + name + ".npy", embedding) #保存embedding到文件
         logger.info("embedding文件保存完毕！")
-        with open(data_path + "word2id.pkl", "wb") as word2id_file:
+        with open(data_path + name + ".pkl", "wb") as word2id_file:
             pickle.dump(word_dict, word2id_file)
         logger.info("word2id文件保存完毕！")
 
@@ -92,9 +92,9 @@ if __name__=="__main__":
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
     # cat train_data | grep -n ^.$ > record
     """
-    vec_path = "data_path/vocb/gigaword_chn.all.a2b.uni.ite50.vec"
+    vec_path = "data_path/vocb/joint4.all.b10c1.2h.iter17.mchar"
     data_path = "MSRA_data/MSRA/"
-    vec2id(vec_path, data_path)
+    vec2id(vec_path, data_path, name="joint4")
     """
     python3 main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=False --pretrain_embedding=gigaword_chn.npy --unk=</s>
     """
