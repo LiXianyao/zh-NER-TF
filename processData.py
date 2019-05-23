@@ -12,6 +12,12 @@ MSRA_data = {
     "other": "/o"
 }
 
+Stock_data = {
+    "pattern": "/o|/n[srt]",
+    "tag": {"/o": "O", "/nr": "PER", "/ns": "LOC", "/nt": "ORG"},
+    "other": "/o"
+}
+
 
 def original2inputFile(original_path, input_path, data_schema=MSRA_data, tag_schema="BIO"):
     delimiter, labels, other_tag = data_schema["pattern"], data_schema["tag"], data_schema["other"]
@@ -84,17 +90,21 @@ def vec2id(vec_path, data_path, name="chn"):
 
 
 if __name__=="__main__":
-    """
+    #"""
     MSRA_original = "data_path/original/testright1.txt"
     MSRA_input = "data_path/MSRA/test_data"
-    original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
+    Stock_original = "Stock/Stock_data/train_10.txt"
+    Stock_input = "Stock/Stock_data/train_data"
+    #original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
     # MSRA训练集：各类实体的数据情况如下：{'/nr': 17615, '/ns': 36517, '/nt': 20571, '/o': 1193462}
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
     # cat train_data | grep -n ^.$ > record
+
+    original2inputFile(original_path=Stock_original, input_path=Stock_input)
     """
     vec_path = "data_path/vocb/joint4.all.b10c1.2h.iter17.mchar"
     data_path = "MSRA_data/MSRA/"
     vec2id(vec_path, data_path, name="joint4")
-    """
-    python3 main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=False --pretrain_embedding=gigaword_chn.npy --unk=</s>
+    ""#"
+    python3 -u main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=True --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=100.0 --epoch=100
     """
