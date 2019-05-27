@@ -61,7 +61,6 @@ if args.mode != 'demo':
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
 
-
 ## paths setting
 """ 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
@@ -85,6 +84,14 @@ if not os.path.exists(result_path): os.makedirs(result_path)
 log_path = os.path.join(result_path, "log.txt")
 paths['log_path'] = log_path
 get_logger(log_path).info(str(args))
+
+##当存在label更新时，更新label
+label_path = os.path.join('.', args.train_data, "labels_data")
+if os.path.exists(label_path):
+    import json
+    with open(label_path, "r") as label_file:
+        tag2label = json.load(label_file)
+        get_logger(log_path).info("检测到label文件更新，更新后的label数量为：%d个" % (len(tag2label)))
 
 
 ## training model
