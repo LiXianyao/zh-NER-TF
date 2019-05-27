@@ -50,8 +50,39 @@ def original2inputFile(original_path, input_path, data_schema=MSRA_data, tag_sch
                     for char, tag in zip(char_list, char_tag_list):
                         input_file.write('%s %s\n' % (char, tag))
                     input_file.write('\n')  # 一句话结束后一个空行
+            """ 对所有label生成对应的映射文件 """
+            store_label_file(labels, other_tag, tag_schema, input_path)
+
+            """ 计算输出每种label在总label重的占比（O除外）"""
+            entity_sum = 0
+            for entity in entity_cnt:
+                if entity != other_tag:
+                    entity_sum += entity_cnt[entity]
+            for entity in entity_cnt:
+                if entity != other_tag:
+                    percentage = entity_cnt[entity] * 1. / entity_sum
+                    entity_cnt[entity] = (entity_cnt[entity], round(percentage, 2))
             logger.info("处理完毕，数据文件总行数%d，实际插入成功行数%d，各类实体的数据情况如下：%s"
                         % (line_cnt, suc_sen_cnt, str(entity_cnt)))
+
+
+def store_label_file(labels, other_tag, tag_schema, input_path):
+    tag_schema = tag_schema[:-1]
+    """ 对所有label生成对应的映射文件 """
+    label_dict = {}
+    for label in labels:
+        if label == other_tag:
+            label_dict[labels[label]] = len(label_dict)
+        else:
+            for loc in tag_schema:
+                loc_label = "%s-%s" % (loc, labels[label])
+                label_dict[loc_label] = len(label_dict)
+    input_dir = "/".join(input_path.split("/")[:-1])
+    print("input_dir is %s"%input_dir)
+    with open("%s/%s" %(input_dir, "labels_data"), "w") as label_file:
+        import json
+        json.dump(label_dict, label_file)
+
 
 
 def sent2char(word_list, tag_list, other_tag, entity_cnt, labels, tag_schema):
@@ -98,14 +129,19 @@ if __name__=="__main__":
     #"""
     MSRA_original = "data_path/original/testright1.txt"
     MSRA_input = "data_path/MSRA/test_data"
-    Stock_original = "Stock/Stock_data/train_part"
-    Stock_input = "Stock/Stock_data/train_data"
+    Stock_original = "Stock/Stock_data/test.txt"
+    Stock_input = "Stock/Stock_data/test_data"
     #original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
     # MSRA训练集：各类实体的数据情况如下：{'/nr': 17615, '/ns': 36517, '/nt': 20571, '/o': 1193462}
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
     # cat train_data | grep -n ^.$ > record
 
     original2inputFile(original_path=Stock_original, input_path=Stock_input, data_schema=Stock_data)
+    # 训练集：509个数据，{'</nn>': (193, 0.08), '</ni>': (522, 0.22), '</nc>': (7, 0.0), '</no>': (946, 0.41), '</nm>':
+    # (26, 0.01), '</nf>': (218, 0.09), '</np>': (118, 0.05), '</nt>': (281, 0.12), '</nl>': (23, 0.01), '</o>': 2527}
+
+    # 测试集：128个数据，{'</nm>': (1, 0.0), '</nt>': (61, 0.12), '</nf>': (36, 0.07), '</nn>': (31, 0.06), '</nl>': (1, 0.0)
+    # , '</o>': 568, '</no>': (247, 0.47), '</nc>': (5, 0.01), '</np>': (18, 0.03), '</ni>': (122, 0.23)}
     """
     vec_path = "data_path/vocb/joint4.all.b10c1.2h.iter17.mchar"
     data_path = "MSRA_data/MSRA/"
@@ -115,3 +151,10 @@ if __name__=="__main__":
     
     python3 -u main.py --mode=demo --train_data=MSRA_data/MSRA/  --demo_model=201905232232 --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl
     """
+    """
+        python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=100.0 --epoch=10
+
+        python3 -u main.py --mode=demo --train_data=Stock/Stock_data  --demo_model=201905232232 --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl
+    """
+
+
