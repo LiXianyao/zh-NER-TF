@@ -70,10 +70,9 @@ def store_label_file(labels, other_tag, tag_schema, input_path):
     tag_schema = tag_schema[:-1]
     """ 对所有label生成对应的映射文件 """
     label_dict = {}
+    label_dict[labels[other_tag]] = 0 # 第一个必须是O
     for label in labels:
-        if label == other_tag:
-            label_dict[labels[label]] = len(label_dict)
-        else:
+        if not label == other_tag:
             for loc in tag_schema:
                 loc_label = "%s-%s" % (loc, labels[label])
                 label_dict[loc_label] = len(label_dict)
