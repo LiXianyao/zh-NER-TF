@@ -99,12 +99,13 @@ def sentence2id(sent, word2id, unk='<UNK>'):
     sentence_id = []
     for word in sent:
         if unk == '<UNK>':
-            if word.isdigit():
-                word = '<NUM>'
-            elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
-                word = '<ENG>'
             if word not in word2id:
-                word = '<UNK>'
+                if word.isdigit():
+                    word = '<NUM>'
+                elif ('\u0041' <= word <= '\u005a') or ('\u0061' <= word <= '\u007a'):
+                    word = '<ENG>'
+                else:
+                    word = '<UNK>'
         else:
             if word not in word2id:
                 word = unk
