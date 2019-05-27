@@ -16,9 +16,21 @@ def load_data_from_mysql(ratio = 0.8, dir="Stock_data"):
     np.random.shuffle(content_list)
 
     train_size = int(entity_num * ratio)
-    data2file(content_list[:train_size], dir, "train.txt")
-    data2file(content_list[train_size:], dir, "test.txt")
+    #data2file(content_list[:train_size], dir, "train.txt")
+    #data2file(content_list[train_size:], dir, "test.txt")
+    getWord2Id(dir, content_list)
     print("文件存储完毕！")
+
+def getWord2Id(dir, content_list, unk='<UNK>'):
+    word_dict = {}
+    for line in content_list:
+        for word in line:
+            if word not in word_dict:
+                word_dict[word] = len(word_dict)
+    word_dict[unk] = len(word_dict)
+    with open("%s/word2id.pkl" % dir, "wb") as word2id_file:
+        import pickle
+        pickle.dump(word_dict, word2id_file)
 
 def data2file(data, dir, file_name):
     dir = dir + "/" if dir[-1] != '/' else dir
