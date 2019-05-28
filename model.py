@@ -215,8 +215,7 @@ class BiLSTM_CRF(object):
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle, unk=self.unk)
         for step, (seqs, labels) in enumerate(batches):
-
-            sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
+            #sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
             step_num = epoch * num_batches + step + 1
             feed_dict, _ = self.get_feed_dict(seqs, labels, self.lr, self.dropout_keep_prob) # 为预定义的每个placeholder绑定数据，将当前batch的输入数据组织成list
             _, loss_train, summary, step_num_ = sess.run([self.train_op, self.loss, self.merged, self.global_step],
@@ -230,6 +229,10 @@ class BiLSTM_CRF(object):
 
             if step + 1 == num_batches: # 保存下每个epoch最后一个step的模型（写在外面按epoch存不也行？？？）
                 saver.save(sess, self.model_path, global_step=step_num)
+
+        self.logger.info('===========validation / train===========')
+        label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
+        self.evaluate(label_list_train, seq_len_list_train, train, epoch)
 
         self.logger.info('===========validation / test===========')
         label_list_dev, seq_len_list_dev = self.dev_one_epoch(sess, dev)
