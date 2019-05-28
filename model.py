@@ -170,9 +170,14 @@ class BiLSTM_CRF(object):
         with tf.Session(config=self.config) as sess:
             sess.run(self.init_op)
             self.add_summary(sess)
-
+            fb1 = -1.0
             for epoch in range(self.epoch_num):
-                self.run_one_epoch(sess, train, dev, self.tag2label, epoch, saver)
+                evaluate_dict, step_num = self.run_one_epoch(sess, train, dev, self.tag2label, epoch, saver)
+                # 每个epoch结束后，保存下当前最好的模型（按fb1取值是否更高）
+                if evaluate_dict["FB1"] > fb1:
+                    self.logger.info("FB1值取得新的最优值%.2f，保存模型"%evaluate_dict["FB1"])
+                    saver.save(sess, self.model_path, global_step=epoch)
+                    fb1 = evaluate_dict["FB1"]
 
     def test(self, test):
         saver = tf.train.Saver()
@@ -214,6 +219,7 @@ class BiLSTM_CRF(object):
 
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle, unk=self.unk)
+        step_num = 1
         for step, (seqs, labels) in enumerate(batches):
             #sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
             step_num = epoch * num_batches + step + 1
@@ -227,8 +233,7 @@ class BiLSTM_CRF(object):
 
             self.file_writer.add_summary(summary, step_num)
 
-            if step + 1 == num_batches: # 保存下每个epoch最后一个step的模型（写在外面按epoch存不也行？？？）
-                saver.save(sess, self.model_path, global_step=step_num)
+
 
         self.logger.info('===========validation / train===========')
         label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
@@ -236,7 +241,8 @@ class BiLSTM_CRF(object):
 
         self.logger.info('===========validation / test===========')
         label_list_dev, seq_len_list_dev = self.dev_one_epoch(sess, dev)
-        self.evaluate(label_list_dev, seq_len_list_dev, dev, epoch)
+        evaluate_dict = self.evaluate(label_list_dev, seq_len_list_dev, dev, epoch)
+        return evaluate_dict, step_num
 
     def get_feed_dict(self, seqs, labels=None, lr=None, dropout=None):
         """
@@ -365,7 +371,7 @@ class BiLSTM_CRF(object):
         :param metric_str:
         :return:
         """
-        evaluate = evaluate.relpace(" ", "").split(";")
+        evaluate = evaluate.replace(" ", "").split(";")
         assert(len(evaluate) == 4)
         evaluate_dict = {}
         for indice in evaluate:
