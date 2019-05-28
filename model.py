@@ -350,6 +350,25 @@ class BiLSTM_CRF(object):
         epoch_num = str(epoch+1) if epoch != None else 'test'
         label_path = os.path.join(self.result_path, 'label_' + epoch_num)
         metric_path = os.path.join(self.result_path, 'result_metric_' + epoch_num)
-        for _ in conlleval(model_predict, label_path, metric_path):
+
+        metrics = conlleval(model_predict, label_path, metric_path) # 调用脚本计算评估指标，第0行是token的情况，第1行是总体entity评估，余下行是逐个entity评估
+        for _ in metrics:
             self.logger.info(_)
+        return self.metric2dict(metrics[1])
+
+    def metric2dict(self, evaluate):
+        """
+        对输入的形如“accuracy:  71.46%; precision:   0.00%; recall:   0.00%; FB1:   0.00”的字符串进行解析，生成dict类型对象，供使用
+        :param metric_str:
+        :return:
+        """
+        evaluate = evaluate.relpace(" ", "").split(";")
+        assert(len(evaluate) == 4)
+        evaluate_dict = {}
+        for indice in evaluate:
+            [indice_key, indice_value] = indice.split(":")
+            indice_value = float(indice_value.replace("%", "")) # 可能有百分号导致不能转换
+            evaluate_dict[indice_key] = indice_value
+        return evaluate_dict
+
 
