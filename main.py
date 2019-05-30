@@ -8,7 +8,7 @@ from data import read_corpus, read_dictionary, tag2label, random_embedding, coun
 
 
 ## Session configuration
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True # 按需分配GPU
