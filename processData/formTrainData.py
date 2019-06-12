@@ -5,6 +5,8 @@
 2、输入数据做统计，根据指定的embedding文件生成char2id文件(使能控制oov是否产生unk)
  """
 import re
+import sys
+sys.path.append("..")
 from consoleLogger import logger
 from processData.data_completion import content_completion
 MSRA_data = {
