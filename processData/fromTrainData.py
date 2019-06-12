@@ -195,10 +195,10 @@ def detect_conflict(entity_cnt):
 
 if __name__=="__main__":
     #"""
-    MSRA_original = "data_path/original/testright1.txt"
-    MSRA_input = "data_path/MSRA/test_data"
-    Stock_original = "Stock/Stock_data/test.txt"
-    Stock_input = "Stock/Stock_data/test_data_c"
+    MSRA_original = "../data_path/original/testright1.txt"
+    MSRA_input = "../data_path/MSRA/test_data"
+    Stock_original = "../Stock/Stock_data/test.txt"
+    Stock_input = "../Stock/Stock_data/test_data_c"
     #original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
     # MSRA训练集：各类实体的数据情况如下：{'/nr': 17615, '/ns': 36517, '/nt': 20571, '/o': 1193462}
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
@@ -220,8 +220,8 @@ if __name__=="__main__":
     # ('</nn>', (31, 0.06)), ('</no>', (245, 0.47)), ('</np>', (19, 0.04)), ('</nt>', (61, 0.12)), ('</o>', 572)]
 
     """
-    vec_path = "data_path/vocb/joint4.all.b10c1.2h.iter17.mchar"
-    data_path = "MSRA_data/MSRA/"
+    vec_path = "../data_path/vocb/joint4.all.b10c1.2h.iter17.mchar"
+    data_path = "../MSRA_data/MSRA/"
     vec2id(vec_path, data_path, name="joint4")
     ""#"
     python3 -u main.py --mode=train --train_data=MSRA_data/MSRA/ --test_data=MSRA_data/MSRA/ --update_embedding=True --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=100.0 --epoch=100
@@ -233,10 +233,10 @@ if __name__=="__main__":
 
         python3 -u main.py --mode=demo --train_data=Stock/Stock_data  --demo_model=201905232232 --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl
     
-        python3 main.py --mode=test --demo_model=201905272339 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=12 --lr=0.0005
+        python3 main.py --mode=test --demo_model=201906102036 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=12 --lr=0.0005
 python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk=-unknown- --word2id=joint4.pkl --clip=10000.0 --epoch=2500 --lr=0.00005 --batch_size=12
     """
-    Stock_train_original = "Stock/Stock_data/train.txt"
+    Stock_train_original = "../Stock/Stock_data/train.txt"
     entity_dict_pre = get_entity_dict(original_path=Stock_train_original, data_schema=Stock_data)
     original2inputFile(original_path=Stock_original, input_path=Stock_input, data_schema=Stock_data, entity_dict_pre=entity_dict_pre)
 
