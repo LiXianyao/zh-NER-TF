@@ -16,6 +16,7 @@ def conlleval(label_predict, label_path, metric_path):
         for sent_result in label_predict:
             for char, tag, tag_ in sent_result:
                 tag = '0' if tag == 'O' else tag
+                tag_ = '0' if tag_ == 'O' else tag_
                 #char = char.encode("utf-8")
                 line.append("%s %s %s\n" % (char, tag, tag_))
             line.append("\n")
