@@ -6,7 +6,7 @@
  """
 import re
 from consoleLogger import logger
-from data_completion import content_completion
+from processData.data_completion import content_completion
 MSRA_data = {
     "pattern": "/o|/n[srt]",
     "tag": {"/o": "O", "/nr": "PER", "/ns": "LOC", "/nt": "ORG"},
