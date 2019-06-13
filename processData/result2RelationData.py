@@ -1,17 +1,32 @@
 #-*-encoding:utf8-*-#
 from itertools import combinations
+import sys
+sys.path.append("..")
+import time
+from consoleLogger import logger
 """
 将测试数据/模型输出数据，转化为关系抽取的输入数据，格式为：
 csv文件：一列
     文本标注
     句子<e1>实体1</e1>..<e2>实体1</e2>...
 """
+
+
+def current_timestamp():
+    timestamp = time.strftime("%m%d%H%M", time.localtime())
+    return timestamp
+
 class RelationDataTransformer:
     init_suffix = "O"  # 标签后缀的初值
 
-    def __init__(self, data_path):
-        with open(data_path, "r", encoding="utf-8") as fw:
-            self.result2Relation(fw)
+    def __init__(self, data_path, save_dir="relationData/{}", file_name=current_timestamp()):
+        result_name = save_dir.format(file_name)
+        with open(data_path, "r", encoding="utf-8") as entity_data:
+            with open(result_name, "w", encoding="utf-8") as result_file:
+                self.result_cnt = 0
+                self.result_file = result_file
+                logger.info("开始转换数据，源文件名：{}.....".format(data_path))
+                self.result2Relation(entity_data)
 
     def init_sentence(self):  # 初始化一句话需要记录的所有信息
         entity_set = set()  # 一句话的所有实体的头尾位置tuple集合， element = (head idx, tail idx)
@@ -29,7 +44,7 @@ class RelationDataTransformer:
         """
         entity_set, sentence, pre_suffix, head, tail = self.init_sentence()
         sen_cnt = 0
-        loc2enti = self.trans_entity
+        entity_cnt = 0
         for data in entity_data:
             if data != '\n':
                 [char, label] = data.strip().split()
@@ -46,17 +61,26 @@ class RelationDataTransformer:
                 if len(sentence.strip()):  # 句子不为空，处理并输出到文件
                     if pre_suffix != "O":  # 句子最后的head~tail对应一个非O实体，但没有被处理到
                         entity_set.add((head, tail))
-
-                    print(sentence)
-                    entity_comb = [ combi for combi in combinations(entity_set, 2)]
-                    print("总计有%d个实体，构成%d个不同的实体对" % (len(entity_set), len(entity_comb)))
-                    print(str([ loc2enti(sentence, entity) for entity in entity_set]))
-                    for combi in entity_comb:
-                        print(self.trans_relation_data(sentence, combi))
+                    entity_cnt += len(entity_set)
                     sen_cnt += 1
+                    self.save_relation_data(sentence, entity_set)
                     if sen_cnt == 10:
                         break
                 entity_set, sentence, pre_suffix, head, tail = self.init_sentence()
+        logger.info("数据转换完毕，总计有{}条实体数据，共{}个实体，产生了{}条关系数据".format(sen_cnt, entity_cnt, self.result_cnt))
+
+    def save_relation_data(self, sentence, entity_set):
+        loc2enti = self.trans_entity
+        #print(sentence)
+        entity_comb = [combi for combi in combinations(entity_set, 2)]
+        #print("总计有%d个实体，构成%d个不同的实体对" % (len(entity_set), len(entity_comb)))
+        #print(str([loc2enti(sentence, entity) for entity in entity_set]))
+        for combi in entity_comb:
+            relation_sample = self.trans_relation_data(sentence, sorted(combi))  # 每个实体对生成一个样本数据
+            #print(relation_sample)
+            self.result_file.write(relation_sample)  # 关系数据写入文件
+            self.result_file.write("\n")
+            self.result_cnt += 1
 
 
     def trans_entity(self, sentence, entity_location):
@@ -76,8 +100,6 @@ class RelationDataTransformer:
             last_loc = entity_tail
         result_str += sentence[last_loc:]  # 补上第二个实体后面的内容
         return result_str
-
-
 
 if __name__=="__main__":
     data_path = "../Stock/Stock_data/test_data_c"
