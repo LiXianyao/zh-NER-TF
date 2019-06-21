@@ -3,7 +3,7 @@ import tensorflow as tf
 import numpy as np
 import os, argparse, time, random
 from model import BiLSTM_CRF
-from utils import str2bool, get_logger, get_entity
+from utils import str2bool, get_logger, get_entity, get_multiple_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
 
 
@@ -143,5 +143,10 @@ elif args.mode == 'demo':
                 demo_sent = list(demo_sent.strip())
                 demo_data = [(demo_sent, ['O'] * len(demo_sent))]
                 tag = model.demo_one(sess, demo_data)
-                PER, LOC, ORG = get_entity(tag, demo_sent)
-                print('PER: {}\nLOC: {}\nORG: {}'.format(PER, LOC, ORG))
+                #PER, LOC, ORG = get_entity(tag, demo_sent)
+                #print('PER: {}\nLOC: {}\nORG: {}'.format(PER, LOC, ORG))
+                entity_dict = get_multiple_entity(tag, demo_sent)
+                res_str = ""
+                for entity in entity_dict:
+                    res_str += '{}: {}\n'.format(entity, entity_dict[entity])
+                print(res_str)

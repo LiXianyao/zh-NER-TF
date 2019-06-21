@@ -17,6 +17,31 @@ def get_entity(tag_seq, char_seq):
     ORG = get_ORG_entity(tag_seq, char_seq)
     return PER, LOC, ORG
 
+def get_multiple_entity(tag_seq, char_seq):
+    entity_type = "0"
+    entity = ""
+    entity_dict = {}
+    for i, (char, tag) in enumerate(zip(char_seq, tag_seq)):
+        tag = str(tag)
+        if tag.split("-")[0] == "B":  # 开始了一个新实体
+            save_pre_entity(entity, entity_type, entity_dict)
+            entity_type = tag.split("-")[-1]
+            entity = char
+        elif tag.split("-")[0] == "I":  # 实体的中间
+            entity += char
+        else:  # 遇到了一个O
+            entity, entity_type = save_pre_entity(entity, entity_type, entity_dict)
+    if len(entity):
+        save_pre_entity(entity, entity_type, entity_dict)
+    return entity_dict
+
+def save_pre_entity(entity, entity_type, entity_dict):
+    if not len(entity) or entity_type == '0':
+        return "", '0'
+    if entity_type not in entity_dict:
+        entity_dict[entity_type] = []
+    entity_dict[entity_type].append(entity)
+    return "", '0'
 
 def get_PER_entity(tag_seq, char_seq):
     length = len(char_seq)
