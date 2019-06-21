@@ -5,7 +5,10 @@
 2、输入数据做统计，根据指定的embedding文件生成char2id文件(使能控制oov是否产生unk)
  """
 import re
+import sys
+sys.path.append("..")
 from consoleLogger import logger
+from processData.data_completion import content_completion
 MSRA_data = {
     "pattern": "/o|/n[srt]",
     "tag": {"/o": "O", "/nr": "PER", "/ns": "LOC", "/nt": "ORG"},
@@ -42,6 +45,7 @@ def original2inputFile(original_path, input_path, data_schema=MSRA_data, tag_sch
             for line in original_file:
                 line_cnt += 1
                 line = line.strip().replace(" ", "").replace("，", ",")
+                line = content_completion(line)  ## 进行补全
                 if not line:
                     continue
                 tag_list, word_list = line2seq(line, line_cnt, delimiter, other_tag)
@@ -53,7 +57,7 @@ def original2inputFile(original_path, input_path, data_schema=MSRA_data, tag_sch
                         input_file.write('%s %s\n' % (char, tag))
                     input_file.write('\n')  # 一句话结束后一个空行
             """ 对所有label生成对应的映射文件 """
-            store_label_file(labels, other_tag, tag_schema, input_path)
+            #store_label_file(labels, other_tag, tag_schema, input_path)
 
             """ 计算输出每种label在总label重的占比（O除外）"""
             entity_sum = 0
@@ -197,28 +201,33 @@ if __name__=="__main__":
     #"""
     MSRA_original = "../data_path/original/testright1.txt"
     MSRA_input = "../data_path/MSRA/test_data"
-    Stock_original = "../Stock/Stock_data/test.txt"
-    Stock_input = "../Stock/Stock_data/test_data_c"
+    Stock_train_original = "../Stock/Stock_data/train.txt"
+    Stock_train_input = "../Stock/Stock_data/train_data_c"
     #original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
     # MSRA训练集：各类实体的数据情况如下：{'/nr': 17615, '/ns': 36517, '/nt': 20571, '/o': 1193462}
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
     # cat train_data | grep -n ^.$ > record
 
-    #original2inputFile(original_path=Stock_original, input_path=Stock_input, data_schema=Stock_data)
+    original2inputFile(original_path=Stock_train_original, input_path=Stock_train_input, data_schema=Stock_data)
     # 训练集：509个数据，统一前：
     #[('</nc>', (7, 0.0)), ('</nf>', (218, 0.09)), ('</ni>', (519, 0.22)), ('</nl>', (23, 0.01)), ('</nm>', (26, 0.01)),
     #  ('</nn>', (193, 0.08)), ('</no>', (948, 0.41)), ('</np>', (118, 0.05)), ('</nt>', (281, 0.12)), ('</o>', 2528)]
     #统一后：
     #[('</nc>', (7, 0.0)), ('</nf>', (209, 0.09)), ('</ni>', (532, 0.23)), ('</nl>', (23, 0.01)), ('</nm>', (24, 0.01)),
     #  ('</nn>', (193, 0.08)), ('</no>', (943, 0.4)), ('</np>', (118, 0.05)), ('</nt>', (284, 0.12)), ('</o>', 2528)]
+    # 修正后：
+    #[('</nc>', (7, 0.0)), ('</nf>', (202, 0.09)), ('</ni>', (546, 0.23)), ('</nl>', (24, 0.01)), ('</nm>', (24, 0.01)),
+    # ('</nn>', (193, 0.08)), ('</no>', (961, 0.41)), ('</np>', (119, 0.05)), ('</nt>', (284, 0.12)), ('</o>', 2544)]
 
     # 测试集：128个数据，修正前：
     #[('</nc>', (5, 0.01)), ('</nf>', (36, 0.07)), ('</ni>', (130, 0.25)), ('</nl>', (1, 0.0)), ('</nm>', (1, 0.0)),
     # ('</nn>', (31, 0.06)), ('</no>', (240, 0.46)), ('</np>', (18, 0.03)), ('</nt>', (61, 0.12)), ('</o>', 572)]
-    #修正后：
+    #统一后：
     #[('</nc>', (5, 0.01)), ('</nf>', (30, 0.06)), ('</ni>', (130, 0.25)), ('</nl>', (1, 0.0)), ('</nm>', (1, 0.0)),
     # ('</nn>', (31, 0.06)), ('</no>', (245, 0.47)), ('</np>', (19, 0.04)), ('</nt>', (61, 0.12)), ('</o>', 572)]
-
+    #修正后：
+    #[('</nc>', (5, 0.01)), ('</nf>', (28, 0.05)), ('</ni>', (131, 0.25)), ('</nl>', (1, 0.0)), ('</nm>', (1, 0.0)),
+    # ('</nn>', (31, 0.06)), ('</no>', (247, 0.47)), ('</np>', (19, 0.04)), ('</nt>', (61, 0.12)), ('</o>', 574)]
     """
     vec_path = "../data_path/vocb/joint4.all.b10c1.2h.iter17.mchar"
     data_path = "../MSRA_data/MSRA/"
@@ -233,11 +242,12 @@ if __name__=="__main__":
 
         python3 -u main.py --mode=demo --train_data=Stock/Stock_data  --demo_model=201905232232 --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl
     
-        python3 main.py --mode=test --demo_model=201906102036 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=12 --lr=0.0005
+        python3 main.py --mode=test --demo_model=201905272339 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=12 --lr=0.0005
 python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk=-unknown- --word2id=joint4.pkl --clip=10000.0 --epoch=2500 --lr=0.00005 --batch_size=12
     """
-    Stock_train_original = "../Stock/Stock_data/train.txt"
+    Stock_test_original = "../Stock/Stock_data/test.txt"
+    Stock_test_input = "../Stock/Stock_data/test_data_c"
     entity_dict_pre = get_entity_dict(original_path=Stock_train_original, data_schema=Stock_data)
-    original2inputFile(original_path=Stock_original, input_path=Stock_input, data_schema=Stock_data, entity_dict_pre=entity_dict_pre)
+    original2inputFile(original_path=Stock_test_original, input_path=Stock_test_input, data_schema=Stock_data, entity_dict_pre=entity_dict_pre)
 
 
