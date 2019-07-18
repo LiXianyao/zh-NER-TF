@@ -106,6 +106,7 @@ class BiLSTM_CRF(object):
             log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits, # 全连接的结果( batch, maxtime, num_tags)
                                                                    tag_indices=self.labels, # labels (batch, seqlen,tag_indice)
                                                                    sequence_lengths=self.sequence_lengths) # seqlen (batch, 1)
+            print(self.transition_params.name)
             """对数似然估计值。由于似然函数本身是概率值，取值0~1，故对数化后就变成负无穷~0，但依然保持单调性。 """
             self.loss = -tf.reduce_mean(log_likelihood)  # 估计值是负数的。故累加到loss就是用减法
             # reduce_mean本身可以指定保留的维度。不指定的情况下计算所有维度的均值，得到一个标量
@@ -180,7 +181,8 @@ class BiLSTM_CRF(object):
                     fb1 = evaluate_dict["FB1"]
 
     def test(self, test):
-        saver = tf.train.Saver()
+        saver = tf.train.import_meta_graph(self.model_path + ".meta")
+        #saver = tf.train.Saver()
         with tf.Session(config=self.config) as sess:
             self.logger.info('=========== testing ===========')
             saver.restore(sess, self.model_path)
@@ -256,15 +258,15 @@ class BiLSTM_CRF(object):
         word_ids, seq_len_list = pad_sequences(seqs, pad_mark=0)
         # 对输入字id的list做zero padding到此batch最大句子长度，但是保留每个句子的实际长度
 
-        feed_dict = {self.word_ids: word_ids,
-                     self.sequence_lengths: seq_len_list}
+        feed_dict = {"word_ids:0": word_ids,
+                     "sequence_lengths:0": seq_len_list}
         if labels is not None: # dev / eval时可能为空
             labels_, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
-            feed_dict[self.labels] = labels_
+            feed_dict["labels:0"] = labels_
         if lr is not None:
-            feed_dict[self.lr_pl] = lr
+            feed_dict["lr_pl:0"] = lr
         if dropout is not None:
-            feed_dict[self.dropout_pl] = dropout
+            feed_dict["dropout:0"] = dropout
 
         return feed_dict, seq_len_list # 在dev/eval时候要使用句子长度，参与计算CRF
 
@@ -295,7 +297,8 @@ class BiLSTM_CRF(object):
 
         if self.CRF:  # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
             """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
-            logits, transition_params = sess.run([self.logits, self.transition_params],
+            logits, transition_params = sess.run([tf.get_default_graph().get_tensor_by_name("proj/Reshape_1:0"),
+                                                  tf.get_default_graph().get_tensor_by_name("transitions:0")],
                                                  feed_dict=feed_dict)
             if demo:
                 print("发射矩阵如下", logits, logits.shape)
@@ -330,6 +333,14 @@ class BiLSTM_CRF(object):
             j += 1
         sum_seq += "=%s" % str(sum)
         print ("score 计算式为：%s"%sum_seq)
+
+    def cnt_all_score(self, depth, now, logit, transition_params):
+
+        send_score = logit[depth][now]
+        if depth + 1 < len(logit):
+            for next in range(len(transition_params)):
+                trans_score = transition_params[now][next]  # 从now状态转移到next状态
+
 
     def evaluate(self, label_list, seq_len_list, data, epoch=None):
         """

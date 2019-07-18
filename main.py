@@ -56,7 +56,7 @@ else:
 ## read corpus and get training data
 if args.mode != 'demo':
     train_path = os.path.join('.', args.train_data, 'train_data')
-    test_path = os.path.join('.', args.test_data, 'test_data')
+    test_path = os.path.join('.', args.test_data, 'train_data_c')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
@@ -118,7 +118,7 @@ elif args.mode == 'test':
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
+    #model.build_graph()
     print("test data: {}".format(test_size))
     model.test(test_data)
 
