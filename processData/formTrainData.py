@@ -189,10 +189,10 @@ def cnt_entity_tagging(word_list, tag_list, other_tag, entity_cnt):
 def detect_conflict(entity_cnt):
     for word in entity_cnt:
         if len(entity_cnt[word]) > 1:
-            logger.debug("发现实体标注冲突，实体名%s,标注类型：%s", word, str(entity_cnt[word]))
+            #logger.debug("发现实体标注冲突，实体名%s,标注类型：%s", word, str(entity_cnt[word]))
             sorted_tag = sorted(entity_cnt[word].items(),key=lambda x:x[1],reverse=True)
             entity_cnt[word] = sorted_tag[0][0]
-            logger.debug("统一后的标注为%s"%(entity_cnt[word]))
+            #logger.debug("统一后的标注为%s"%(entity_cnt[word]))
         else:
             entity_cnt[word] = list(entity_cnt[word].keys())[0]
     return entity_cnt
@@ -201,8 +201,8 @@ if __name__=="__main__":
     #"""
     MSRA_original = "../data_path/original/testright1.txt"
     MSRA_input = "../data_path/MSRA/test_data"
-    Stock_train_original = "../Stock/Stock_data/train.txt"
-    Stock_train_input = "../Stock/Stock_data/train_data_c"
+    Stock_train_original = "../Stock/Stock_data/train_85.txt"
+    Stock_train_input = "../Stock/Stock_data/train_data_85"
     #original2inputFile(original_path=MSRA_original, input_path=MSRA_input)
     # MSRA训练集：各类实体的数据情况如下：{'/nr': 17615, '/ns': 36517, '/nt': 20571, '/o': 1193462}
     # 各类实体的数据情况如下：{'/nr': 1973, '/ns': 2877, '/o': 8786, '/nt': 1331}
@@ -242,12 +242,20 @@ if __name__=="__main__":
 
         python3 -u main.py --mode=demo --train_data=Stock/Stock_data  --demo_model=201905232232 --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl
     
-        python3 main.py --mode=test --demo_model=201905272339 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=12 --lr=0.0005
-python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk=-unknown- --word2id=joint4.pkl --clip=10000.0 --epoch=2500 --lr=0.00005 --batch_size=12
+        python3 main.py --mode=test --demo_model=201906102036 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=50 --lr=0.0005
+        python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk=-unknown- --word2id=joint4.pkl --clip=10000.0 --epoch=2500 --lr=0.00005 --batch_size=24
     """
-    Stock_test_original = "../Stock/Stock_data/test.txt"
-    Stock_test_input = "../Stock/Stock_data/test_data_c"
+    Stock_test_original = "../Stock/Stock_data/test_85.txt"
+    Stock_test_input = "../Stock/Stock_data/test_data_85"
     entity_dict_pre = get_entity_dict(original_path=Stock_train_original, data_schema=Stock_data)
     original2inputFile(original_path=Stock_test_original, input_path=Stock_test_input, data_schema=Stock_data, entity_dict_pre=entity_dict_pre)
+
+    #训练集1484
+    #[('</nc>', (40, 0.01)), ('</nf>', (367, 0.05)), ('</ni>', (1188, 0.17)), ('</nl>', (104, 0.01)), ('</nm>', (77, 0.01)),
+    # ('</nn>', (708, 0.1)), ('</no>', (3006, 0.43)), ('</np>', (421, 0.06)), ('</nt>', (1050, 0.15)), ('</o>', 7117)]
+
+    #测试集
+    #[('</nc>', (10, 0.0)), ('</nf>', (200, 0.06)), ('</ni>', (656, 0.21)), ('</nl>', (52, 0.02)), ('</nm>', (34, 0.01)),
+    # ('</nn>', (302, 0.1)), ('</no>', (1295, 0.41)), ('</np>', (153, 0.05)), ('</nt>', (442, 0.14)), ('</o>', 3224)]
 
 
