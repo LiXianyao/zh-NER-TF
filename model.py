@@ -48,7 +48,7 @@ class BiLSTM_CRF(object):
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")  # 推测形状：batch
         """ 两个超参数 """
         self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
-        self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr")
+        self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr_pl")
 
     def lookup_layer_op(self):
         """ 定义embedding层的变量（变量作用域"word") """
