@@ -38,6 +38,7 @@ class BiLSTM_CRF(object):
         self.biLSTM_layer_op()
         self.attention_layer_op()
         self.softmax_pred_op()
+        self.logit_op()
         self.loss_op()
         self.trainstep_op()
         self.init_op()
@@ -83,7 +84,9 @@ class BiLSTM_CRF(object):
             """
             output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
             self.gru_output = output
-            output = tf.nn.dropout(output, self.dropout_pl) # BiLSTM的结果过个dropout层
+
+    def logit_op(self):
+        output = tf.nn.dropout(self.gru_output, self.dropout_pl) # BiLSTM的结果过个dropout层
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
