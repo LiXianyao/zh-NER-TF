@@ -2,7 +2,8 @@
 import tensorflow as tf
 import numpy as np
 import os, argparse, time, random
-from model import BiLSTM_CRF
+#from model import BiLSTM_CRF
+from CANNER import BiLSTM_CRF
 from utils import str2bool, get_logger, get_entity, get_multiple_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
 
@@ -55,8 +56,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data')
-    test_path = os.path.join('.', args.test_data, 'train_data_c')
+    train_path = os.path.join('.', args.train_data, 'train_data_c')
+    test_path = os.path.join('.', args.test_data, 'test_data_c')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
