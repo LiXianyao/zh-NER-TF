@@ -101,9 +101,9 @@ class BiLSTM_CRF(object):
 
             """ BiGRU的输出跟ATT的结果拼接，后接一层全连接，由[-1, 4*hidden_dim]->[-1, 7（num_tags）] """
             mat_time = tf.shape(output)[1]
-            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
             output = tf.concat([output, self.att_repr], axis=-1)
             print("output with att shape={}".format(output.shape))
+            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
             pred = tf.matmul(output, W) + b
 
             self.logits = tf.reshape(pred, [-1, mat_time, self.num_tags]) # 形状还原回 batch, maxtime, num_tags
@@ -124,25 +124,28 @@ class BiLSTM_CRF(object):
                                   dtype=tf.float32)
 
             att_repr = []
-            batch_num, max_len = self.gru_output.shape[0:2]
-            for batch in batch_num:
+            max_len = tf.shape(self.gru_output)[1]
+            for batch in range(self.batch_size):
                 seq_len = self.sequence_lengths[batch]
-                key = self.gru_output[batch][seq_len]
-                for time in range(self.sequence_lengths[batch]):
-                    att_repr.append(self.compute_attention_weight(self.gru_output[batch][time], key))
-                zeros = [ tf.zeros( 2 * self.hidden_dim) for i in range(max_len - seq_len)]
-                att_repr.extend(zeros)
+                query = self.gru_output[batch,: seq_len]
+                att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
             self.att_repr = tf.stack(att_repr)
             print(self.att_repr.shape)
 
-    def compute_attention_weight(self, query, key):
-        linear = tf.matmul(query, self.W_q) + tf.matmul(key, self.W_k)  #(seqlen , 2*h_dim)
-        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen, 1) 即query和每个key的score值
-        alpha = tf.nn.softmax(score)  # 计算att权重, (seqlen, 1)
+    def compute_attention_weight(self, query, key, seq_len, max_len):
+        Q_exp = tf.expand_dims(tf.matmul(query, self.W_q), 1) # (seqlen, 1, 2*hdim)
+        K_exp = tf.expand_dims(tf.matmul(key, self.W_k), 0)  # (1, seqlen, 2*hdim)
+        linear = tf.reshape(Q_exp + K_exp, [-1, 2 * self.hidden_dim])  #(seqlen*seqlen , 2*h_dim)
+        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen*seqlen, 1) 即query和每个key的score值
+        score = tf.reshape(score, [seq_len, seq_len, 2 * self.hidden_dim])
+        alpha = tf.nn.softmax(score, axis=1)[:,:,0]  # 计算att权重, (seqlen, seqlen)
         print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
         print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
-        att_repre = tf.matmul(tf.transpose(alpha), key)  # (1,seqlen)*(seqlen,hdim) = 1*hdim
-        return tf.squeeze(att_repre)  # 移除维数1，返回一个seqlen的张量
+        att_repre = tf.matmul(alpha, key)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
+
+        padding = tf.zeros([max_len - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
+        att_repre = tf.concat([att_repre, padding], axis=0)
+        return att_repre
 
     def loss_op(self):
         """CRF层+loss计算"""
