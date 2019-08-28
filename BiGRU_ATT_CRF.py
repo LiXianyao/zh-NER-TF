@@ -314,7 +314,7 @@ class BiGRU_ATT_CRF(object):
 
 
 
-        if int(math.log2(epoch)) == math.log2(epoch):  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
+        if int(math.log2(epoch + 1)) == math.log2(epoch + 1):  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
             label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
             self.evaluate(label_list_train, seq_len_list_train, train, epoch)

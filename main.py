@@ -3,13 +3,13 @@ import tensorflow as tf
 import numpy as np
 import os, argparse, time, random
 #from model import BiLSTM_CRF
-from CANNER import BiLSTM_CRF
+from BiGRU_ATT_CRF import BiGRU_ATT_CRF
 from utils import str2bool, get_logger, get_entity, get_multiple_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
 
 
 ## Session configuration
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True # 按需分配GPU
@@ -57,8 +57,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data_85')
-    test_path = os.path.join('.', args.test_data, 'test_data_85')
+    train_path = os.path.join('.', args.train_data, 'train_data_stu')
+    test_path = os.path.join('.', args.test_data, 'test_data_stu')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
@@ -101,7 +101,7 @@ if args.mode == 'train':
     count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
     count_oov(word2id, test_data, log_path, type="test_data")
 
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
 
     ## hyperparameters-tuning, split train/dev
