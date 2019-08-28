@@ -7,9 +7,10 @@ from tensorflow.contrib.crf import viterbi_decode
 from data import pad_sequences, batch_yield
 from utils import get_logger
 from eval import conlleval
+import math
 
 
-class BiLSTM_CRF(object):
+class BiGRU_ATT_CRF(object):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         self.batch_size = args.batch_size
         self.restore_ckpt = args.restore
@@ -236,7 +237,7 @@ class BiLSTM_CRF(object):
         saver = tf.train.Saver(tf.global_variables())
 
         with tf.Session(config=self.config) as sess:
-            sess.run(tf.global_variables_initializer())
+            sess.run(self.init_op)
             if self.restore_ckpt:
                 print(self.model_path[:-5])
                 ckpt_file = tf.train.latest_checkpoint(self.model_path[:-5])
@@ -313,9 +314,10 @@ class BiLSTM_CRF(object):
 
 
 
-        self.logger.info('===========validation / train===========')
-        label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
-        self.evaluate(label_list_train, seq_len_list_train, train, epoch)
+        if int(math.log2(epoch)) == math.log2(epoch):  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
+            self.logger.info('===========validation / train===========')
+            label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
+            self.evaluate(label_list_train, seq_len_list_train, train, epoch)
 
         self.logger.info('===========validation / test===========')
         label_list_dev, seq_len_list_dev = self.dev_one_epoch(sess, dev)
