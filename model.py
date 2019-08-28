@@ -7,11 +7,13 @@ from tensorflow.contrib.crf import viterbi_decode
 from data import pad_sequences, batch_yield
 from utils import get_logger
 from eval import conlleval
+import math
 
 
 class BiLSTM_CRF(object):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         self.batch_size = args.batch_size
+        self.restore_ckpt = args.restore
         self.epoch_num = args.epoch
         self.hidden_dim = args.hidden_dim
         self.embeddings = embeddings
@@ -37,6 +39,7 @@ class BiLSTM_CRF(object):
         self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
         self.biLSTM_layer_op()
         self.softmax_pred_op()
+        self.logit_op()
         self.loss_op()
         self.trainstep_op()
         self.init_op()
@@ -80,8 +83,11 @@ class BiLSTM_CRF(object):
 				·output_fw_state, output_bw_state 则分别是两个方向最后的隐藏状态组成的二元组，类型为LSTMStateTuple(c, h)
                 当句子长度<max_time时，fw_state中的h是output_fw张量中不全为零的最后一行（正向，反向的时候是第一行）
             """
-            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
-            output = tf.nn.dropout(output, self.dropout_pl) # BiLSTM的结果过个dropout层
+            #print("lstm_out_fw shape = {}".format(output_fw_seq.shape))
+            self.blstm_output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
+
+    def logit_op(self):
+        output = tf.nn.dropout(self.blstm_output, self.dropout_pl) # BiLSTM的结果过个dropout层
 
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
@@ -170,6 +176,15 @@ class BiLSTM_CRF(object):
 
         with tf.Session(config=self.config) as sess:
             sess.run(self.init_op)
+            if self.restore_ckpt:
+                print(self.model_path[:-5])
+                ckpt_file = tf.train.latest_checkpoint(self.model_path[:-5])
+                if not ckpt_file:
+                    print("ckpt file not exist")
+                else:
+                    print("existing checkpoint :{}".format(ckpt_file))
+                    saver.restore(sess, ckpt_file)
+
             self.add_summary(sess)
             fb1 = -1.0
             for epoch in range(self.epoch_num):
@@ -237,9 +252,10 @@ class BiLSTM_CRF(object):
 
 
 
-        self.logger.info('===========validation / train===========')
-        label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
-        self.evaluate(label_list_train, seq_len_list_train, train, epoch)
+        if int(math.log2(epoch)) == math.log2(epoch):  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
+            self.logger.info('===========validation / train===========')
+            label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
+            self.evaluate(label_list_train, seq_len_list_train, train, epoch)
 
         self.logger.info('===========validation / test===========')
         label_list_dev, seq_len_list_dev = self.dev_one_epoch(sess, dev)
@@ -255,13 +271,13 @@ class BiLSTM_CRF(object):
         :param dropout:
         :return: feed_dict
         """
-        word_ids, seq_len_list = pad_sequences(seqs, pad_mark=0)
+        word_ids, seq_len_list, max_len = pad_sequences(seqs, pad_mark=0)
         # 对输入字id的list做zero padding到此batch最大句子长度，但是保留每个句子的实际长度
 
         feed_dict = {"word_ids:0": word_ids,
                      "sequence_lengths:0": seq_len_list}
         if labels is not None: # dev / eval时可能为空
-            labels_, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
+            labels_, _, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
             feed_dict["labels:0"] = labels_
         if lr is not None:
             feed_dict["lr_pl:0"] = lr
@@ -305,6 +321,7 @@ class BiLSTM_CRF(object):
                 print("转移概率矩阵如下", transition_params, transition_params.shape)
             label_list = []
             for logit, seq_len in zip(logits, seq_len_list):
+                if not seq_len: continue
                 viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
                 if demo:
                     print("最优序列：", viterbi_seq, "得分为%.4f"%_)
@@ -360,10 +377,8 @@ class BiLSTM_CRF(object):
         for label_, (sent, tag) in zip(label_list, data): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
             tag_ = [label2tag[label__] for label__ in label_] # 将label转换回tag（O以外）
             sent_res = []
-            if  len(label_) != len(sent): # 异常，特别输出长度对不上的情况
-                print(sent)
-                print(len(label_))
-                print(tag)
+            if len(label_) != len(sent):  # 异常，特别输出长度对不上的情况
+                print("sen len={}, label_len={}, tag_len={}".format(len(sent), len(tag_), len(tag)))
             for i in range(len(sent)):
                 sent_res.append([sent[i], tag[i], tag_[i]])
             model_predict.append(sent_res)
