@@ -12,6 +12,7 @@ from eval import conlleval
 class BiLSTM_CRF(object):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         self.batch_size = args.batch_size
+        self.restore_ckpt = args.restore
         self.epoch_num = args.epoch
         self.hidden_dim = args.hidden_dim
         self.embeddings = embeddings
@@ -48,6 +49,8 @@ class BiLSTM_CRF(object):
         self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")  # 推测形状：batch*sentlen
         self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")  # 推测形状：batch*sentlen
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")  # 推测形状：batch
+        self.var_batch_size = tf.placeholder(tf.int32, shape=[], name="batch_size")  #
+        self.max_length = tf.placeholder(tf.int32, shape=[], name="max_length")  #
         """ 两个超参数 """
         self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
         self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr_pl")
@@ -102,8 +105,8 @@ class BiLSTM_CRF(object):
             """ BiGRU的输出跟ATT的结果拼接，后接一层全连接，由[-1, 4*hidden_dim]->[-1, 7（num_tags）] """
             mat_time = tf.shape(output)[1]
             output = tf.concat([output, self.att_repr], axis=-1)
-            print("output with att shape={}".format(output.shape))
-            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
+            #print("output with att shape={}".format(output.shape))
+            output = tf.reshape(output, [-1, 4 * self.hidden_dim])
             pred = tf.matmul(output, W) + b
 
             self.logits = tf.reshape(pred, [-1, mat_time, self.num_tags]) # 形状还原回 batch, maxtime, num_tags
@@ -123,24 +126,41 @@ class BiLSTM_CRF(object):
                                   initializer=tf.contrib.layers.xavier_initializer(),
                                   dtype=tf.float32)
 
+            max_len = self.max_length
             att_repr = []
-            max_len = tf.shape(self.gru_output)[1]
             for batch in range(self.batch_size):
                 seq_len = self.sequence_lengths[batch]
-                query = self.gru_output[batch,: seq_len]
+                query = self.gru_output[batch, : seq_len, :]
                 att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
             self.att_repr = tf.stack(att_repr)
+            #self.att_repr = self.compute_batch_attention_weight(query=self.gru_output, max_len=max_len, batch_size=batch_size)
             print(self.att_repr.shape)
 
-    def compute_attention_weight(self, query, key, seq_len, max_len):
-        Q_exp = tf.expand_dims(tf.matmul(query, self.W_q), 1) # (seqlen, 1, 2*hdim)
-        K_exp = tf.expand_dims(tf.matmul(key, self.W_k), 0)  # (1, seqlen, 2*hdim)
-        linear = tf.reshape(Q_exp + K_exp, [-1, 2 * self.hidden_dim])  #(seqlen*seqlen , 2*h_dim)
-        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen*seqlen, 1) 即query和每个key的score值
-        score = tf.reshape(score, [seq_len, seq_len, 2 * self.hidden_dim])
-        alpha = tf.nn.softmax(score, axis=1)[:,:,0]  # 计算att权重, (seqlen, seqlen)
+    def compute_batch_attention_weight(self, query, max_len, batch_size):
+        query = tf.reshape(query, [batch_size * max_len, 2 * self.hidden_dim])  # (batch*maxlen, 2*hidden)
+        Q_exp = tf.reshape(tf.matmul(query, self.W_q), [batch_size, max_len, 2 * self.hidden_dim])  # (b, l , 2*hidden)
+        K_exp = tf.reshape(tf.matmul(query, self.W_k), [batch_size, max_len, 2 * self.hidden_dim])  # (b, l , 2*hidden)
+        linear = tf.reshape(tf.expand_dims(Q_exp, 2) + tf.expand_dims(K_exp, 1), [-1, 2 * self.hidden_dim])  #(bacth_size*max_len*max_len , 2*h_dim)
+        print("linear's shape is {}，Q_exp's shape is {}, K_exp's shape is{}, max_len is {}".format(linear.shape, Q_exp.shape,
+                                                                                    K_exp.shape, max_len))
+        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (bacth_size*max_len*max_len, 1) 即query和每个key的score值
+        alpha = tf.nn.softmax(tf.reshape(score, [batch_size, max_len, max_len]), axis=1)  # 计算att权重, (bacth_size, max_len, max_len)
         print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
-        print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
+        #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
+        query = tf.reshape(query, [batch_size, max_len, 2 * self.hidden_dim])  # (batch*maxlen, 2*hidden)
+        att_repre = tf.matmul(alpha, query)  # (batch, maxlen,maxlen)*(batch, maxlen,hdim) = batchm maxlen, hdim
+
+        return att_repre
+
+    def compute_attention_weight(self, query, key, seq_len, max_len):
+        linear = tf.reshape(tf.expand_dims(tf.matmul(query, self.W_q), 1) + tf.expand_dims(tf.matmul(key, self.W_k), 0), [seq_len*seq_len, 2 * self.hidden_dim])  #(seqlen*seqlen , 2*h_dim)
+        #print("linear's shape is {}，Q_exp's shape is {}, K_exp's shape is{}, seq_len is{}. max_len is {}".format(linear.shape, Q_exp.shape,
+        #                                                                            K_exp.shape, seq_len, max_len))
+        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen*seqlen, 1) 即query和每个key的score值
+        score = tf.reshape(score, [seq_len, seq_len])
+        alpha = tf.nn.softmax(score, axis=1)  # 计算att权重, (seqlen, seqlen)
+        #print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
+        #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
         att_repre = tf.matmul(alpha, key)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
 
         padding = tf.zeros([max_len - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
@@ -153,7 +173,7 @@ class BiLSTM_CRF(object):
             log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits, # 全连接的结果( batch, maxtime, num_tags)
                                                                    tag_indices=self.labels, # labels (batch, seqlen,tag_indice)
                                                                    sequence_lengths=self.sequence_lengths) # seqlen (batch, 1)
-            print(self.transition_params.name)
+            #print(self.transition_params.name)
             """对数似然估计值。由于似然函数本身是概率值，取值0~1，故对数化后就变成负无穷~0，但依然保持单调性。 """
             self.loss = -tf.reduce_mean(log_likelihood)  # 估计值是负数的。故累加到loss就是用减法
             # reduce_mean本身可以指定保留的维度。不指定的情况下计算所有维度的均值，得到一个标量
@@ -216,7 +236,16 @@ class BiLSTM_CRF(object):
         saver = tf.train.Saver(tf.global_variables())
 
         with tf.Session(config=self.config) as sess:
-            sess.run(self.init_op)
+            sess.run(tf.global_variables_initializer())
+            if self.restore_ckpt:
+                print(self.model_path[:-5])
+                ckpt_file = tf.train.latest_checkpoint(self.model_path[:-5])
+                if not ckpt_file:
+                    print("ckpt file not exist")
+                else:
+                    print("existing checkpoint :{}".format(ckpt_file))
+                    saver.restore(sess, ckpt_file)
+
             self.add_summary(sess)
             fb1 = -1.0
             for epoch in range(self.epoch_num):
@@ -302,13 +331,15 @@ class BiLSTM_CRF(object):
         :param dropout:
         :return: feed_dict
         """
-        word_ids, seq_len_list = pad_sequences(seqs, pad_mark=0)
+        word_ids, seq_len_list, max_len = pad_sequences(seqs, pad_mark=0)
         # 对输入字id的list做zero padding到此batch最大句子长度，但是保留每个句子的实际长度
 
         feed_dict = {"word_ids:0": word_ids,
-                     "sequence_lengths:0": seq_len_list}
+                     "sequence_lengths:0": seq_len_list,
+                     "max_length:0": max_len,
+                     "batch_size:0": len(seq_len_list)}
         if labels is not None: # dev / eval时可能为空
-            labels_, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
+            labels_, _, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
             feed_dict["labels:0"] = labels_
         if lr is not None:
             feed_dict["lr_pl:0"] = lr
@@ -352,6 +383,8 @@ class BiLSTM_CRF(object):
                 print("转移概率矩阵如下", transition_params, transition_params.shape)
             label_list = []
             for logit, seq_len in zip(logits, seq_len_list):
+                if not seq_len:
+                    continue
                 viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
                 if demo:
                     print("最优序列：", viterbi_seq, "得分为%.4f"%_)
@@ -407,10 +440,8 @@ class BiLSTM_CRF(object):
         for label_, (sent, tag) in zip(label_list, data): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
             tag_ = [label2tag[label__] for label__ in label_] # 将label转换回tag（O以外）
             sent_res = []
-            if  len(label_) != len(sent): # 异常，特别输出长度对不上的情况
-                print(sent)
-                print(len(label_))
-                print(tag)
+            if len(label_) != len(sent): # 异常，特别输出长度对不上的情况
+                print("sen len={}, label_len={}, tag_len={}".format(len(sent), len(tag_), len(tag)))
             for i in range(len(sent)):
                 sent_res.append([sent[i], tag[i], tag_[i]])
             model_predict.append(sent_res)

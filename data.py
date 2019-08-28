@@ -145,6 +145,7 @@ def pad_sequences(sequences, pad_mark=0):
     :return:
     """
     max_len = max(map(lambda x : len(x), sequences)) # 根据当前batch的字id列表的长度，计算当前batch的最大句子长度
+    #max_len = min(max_len, 300)
     seq_list, seq_len_list = [], []
     ## 对输入字id的list做zero padding，但是保留每个句子的实际长度 （只是为了创建一个batch的张量不失败？）
     for seq in sequences:
@@ -152,7 +153,7 @@ def pad_sequences(sequences, pad_mark=0):
         seq_ = seq[:max_len] + [pad_mark] * max(max_len - len(seq), 0)
         seq_list.append(seq_)
         seq_len_list.append(min(len(seq), max_len))
-    return seq_list, seq_len_list
+    return seq_list, seq_len_list, max_len
 
 
 def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, unk='<UNK>'):
@@ -182,5 +183,7 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, unk='<UNK>'):
         labels.append(label_)
 
     if len(seqs) != 0:
+        seqs.extend([[]] * (batch_size-len(seqs)))
+        labels.extend([[]] * (batch_size - len(labels)))
         yield seqs, labels
 
