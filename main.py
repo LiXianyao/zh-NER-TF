@@ -13,7 +13,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True # 按需分配GPU
-config.gpu_options.per_process_gpu_memory_fraction = 0.2  # 分配固定大小最多占显存的0.2 need ~700MB GPU memory
+config.gpu_options.per_process_gpu_memory_fraction = 1.0  # 分配固定大小最多占显存的0.2 need ~700MB GPU memory
 
 
 ## hyperparameters
@@ -36,6 +36,7 @@ parser.add_argument('--mode', type=str, default='demo', help='train/test/demo')
 parser.add_argument('--demo_model', type=str, default='1521112368', help='model for test and demo')
 parser.add_argument('--unk', type=str, default='<UNK>', help='the tag for unknown word when a word is missing in the word2id')
 parser.add_argument('--word2id', type=str, default='word2id.pkl', help='word2id file name(same dir with the train_data)')
+parser.add_argument('--restore', type=str2bool, default=False, help='use exisiting checkpoint.')
 args = parser.parse_args()
 
 
@@ -56,8 +57,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data_c')
-    test_path = os.path.join('.', args.test_data, 'test_data_c')
+    train_path = os.path.join('.', args.train_data, 'train_data_85')
+    test_path = os.path.join('.', args.test_data, 'test_data_85')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
