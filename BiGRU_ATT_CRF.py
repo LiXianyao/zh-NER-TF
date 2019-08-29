@@ -90,8 +90,8 @@ class BiGRU_ATT_CRF(object):
             self.gru_output = output
 
     def logit_op(self):
-        output = tf.nn.dropout(self.gru_output, self.dropout_pl) # BiLSTM的结果过个dropout层
-
+        #output = tf.nn.dropout(self.gru_output, self.dropout_pl) # BiLSTM的结果过个dropout层
+        output = self.gru_output
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
                                 shape=[4 * self.hidden_dim, self.num_tags],
@@ -106,6 +106,7 @@ class BiGRU_ATT_CRF(object):
             """ BiGRU的输出跟ATT的结果拼接，后接一层全连接，由[-1, 4*hidden_dim]->[-1, 7（num_tags）] """
             mat_time = tf.shape(output)[1]
             output = tf.concat([output, self.att_repr], axis=-1)
+            output = tf.nn.dropout(output, self.dropout_pl)  # BiLSTM的结果过个dropout层
             #print("output with att shape={}".format(output.shape))
             output = tf.reshape(output, [-1, 4 * self.hidden_dim])
             pred = tf.matmul(output, W) + b
@@ -314,7 +315,7 @@ class BiGRU_ATT_CRF(object):
 
 
 
-        if int(math.log2(epoch + 1)) == math.log2(epoch + 1):  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
+        if epoch % 20 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
             label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
             self.evaluate(label_list_train, seq_len_list_train, train, epoch)
