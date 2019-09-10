@@ -105,7 +105,7 @@ class BiGRU_ATT_CRF(object):
 
             """ BiGRU的输出跟ATT的结果拼接，后接一层全连接，由[-1, 4*hidden_dim]->[-1, 7（num_tags）] """
             mat_time = tf.shape(output)[1]
-            output = tf.concat([output, self.att_repr], axis=-1)
+            output = tf.concat([output, self.batch_att_res], axis=-1)  # 记得跳过第一段
             output = tf.nn.dropout(output, self.dropout_pl)  # BiLSTM的结果过个dropout层
             #print("output with att shape={}".format(output.shape))
             output = tf.reshape(output, [-1, 4 * self.hidden_dim])
@@ -128,15 +128,16 @@ class BiGRU_ATT_CRF(object):
                                   initializer=tf.contrib.layers.xavier_initializer(),
                                   dtype=tf.float32)
 
-            max_len = self.max_length
-            att_repr = []
+            batch_cnt = tf.constant(0, dtype=tf.int32)
+            batch_att_res = tf.zeros([1, self.max_length, 2 * self.hidden_dim])  # 先初始化一个0行，之后再去掉
+            loop_con = lambda cnt, _: tf.cond(cnt < self.var_batch_size, lambda: True, lambda: False)
             for batch in range(self.batch_size):
-                seq_len = self.sequence_lengths[batch]
-                query = self.gru_output[batch, : seq_len, :]
-                att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
-            self.att_repr = tf.stack(att_repr)
+                batch_cnt, batch_att_res = tf.while_loop(loop_con, self.compute_attention_weight, [batch_cnt, batch_att_res], shape_invariants=[batch_cnt.shape, tf.TensorShape([None, None, 2*self.hidden_dim])])
+                #att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
+            #self.att_repr = tf.stack(att_repr)
             #self.att_repr = self.compute_batch_attention_weight(query=self.gru_output, max_len=max_len, batch_size=batch_size)
-            print(self.att_repr.shape)
+            #print(self.att_repr.shape)
+            self.batch_att_res = batch_att_res[1:]
 
     def compute_batch_attention_weight(self, query, max_len, batch_size):
         query = tf.reshape(query, [batch_size * max_len, 2 * self.hidden_dim])  # (batch*maxlen, 2*hidden)
@@ -154,8 +155,10 @@ class BiGRU_ATT_CRF(object):
 
         return att_repre
 
-    def compute_attention_weight(self, query, key, seq_len, max_len):
-        linear = tf.reshape(tf.expand_dims(tf.matmul(query, self.W_q), 1) + tf.expand_dims(tf.matmul(key, self.W_k), 0), [seq_len*seq_len, 2 * self.hidden_dim])  #(seqlen*seqlen , 2*h_dim)
+    def compute_attention_weight(self, batch, loop_res):
+        seq_len = self.sequence_lengths[batch]
+        query = self.gru_output[batch, : seq_len, :]
+        linear = tf.reshape(tf.expand_dims(tf.matmul(query, self.W_q), 1) + tf.expand_dims(tf.matmul(query, self.W_k), 0), [seq_len*seq_len, 2 * self.hidden_dim])  #(seqlen*seqlen , 2*h_dim)
         #print("linear's shape is {}，Q_exp's shape is {}, K_exp's shape is{}, seq_len is{}. max_len is {}".format(linear.shape, Q_exp.shape,
         #                                                                            K_exp.shape, seq_len, max_len))
         score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen*seqlen, 1) 即query和每个key的score值
@@ -163,11 +166,13 @@ class BiGRU_ATT_CRF(object):
         alpha = tf.nn.softmax(score, axis=1)  # 计算att权重, (seqlen, seqlen)
         #print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
         #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
-        att_repre = tf.matmul(alpha, key)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
+        att_repre = tf.matmul(alpha, query)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
 
-        padding = tf.zeros([max_len - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
-        att_repre = tf.concat([att_repre, padding], axis=0)
-        return att_repre
+        padding = tf.zeros([self.max_length - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
+        att_repre = tf.expand_dims(tf.concat([att_repre, padding], axis=0), 0) # 1, maxlen, hdim
+        batch += 1
+        loop_res = tf.concat([loop_res, att_repre], 0) # 这句话的att结果拼上去
+        return batch, loop_res
 
     def loss_op(self):
         """CRF层+loss计算"""
