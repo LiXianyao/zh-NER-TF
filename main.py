@@ -2,7 +2,7 @@
 import tensorflow as tf
 import numpy as np
 import os, argparse, time, random
-#from model import BiLSTM_CRF
+from model import BiLSTM_CRF
 from BiGRU_ATT_CRF import BiGRU_ATT_CRF
 from utils import str2bool, get_logger, get_entity, get_multiple_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
@@ -57,8 +57,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data_stu')
-    test_path = os.path.join('.', args.test_data, 'test_data_stu')
+    train_path = os.path.join('.', args.train_data, 'train_data_0910')
+    test_path = os.path.join('.', args.test_data, 'test_data_0910')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
@@ -67,6 +67,7 @@ if args.mode != 'demo':
 """ 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
 timestamp = time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' else args.demo_model
+args.demo_model = timestamp
 output_path = os.path.join('.', args.train_data+"_save", timestamp)  # 模型保存的目录 + 时间戳作为模型的名字
 if not os.path.exists(output_path): os.makedirs(output_path)  # 目录不存在则创建对应目录
 
@@ -129,7 +130,7 @@ elif args.mode == 'demo':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
     saver = tf.train.Saver()
     with tf.Session(config=config) as sess:
