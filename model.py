@@ -1,7 +1,7 @@
 import numpy as np
 import os, time, sys
 import tensorflow as tf
-from tensorflow.contrib.rnn import LSTMCell
+from tensorflow.contrib.rnn import LSTMCell, GRUCell
 from tensorflow.contrib.crf import crf_log_likelihood
 from tensorflow.contrib.crf import viterbi_decode
 from data import pad_sequences, batch_yield
@@ -33,6 +33,7 @@ class BiLSTM_CRF(object):
         self.logger = get_logger(paths['log_path'])
         self.result_path = paths['result_path']
         self.config = config
+        self.embedding_dim = args.embedding_dim
 
     def build_graph(self):
         self.add_placeholders()
@@ -49,6 +50,8 @@ class BiLSTM_CRF(object):
         self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")  # 推测形状：batch*sentlen
         self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")  # 推测形状：batch*sentlen
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")  # 推测形状：batch
+        self.var_batch_size = tf.placeholder(tf.int32, shape=[], name="batch_size")  #
+        self.max_length = tf.placeholder(tf.int32, shape=[], name="max_length")  #
         """ 两个超参数 """
         self.dropout_pl = tf.placeholder(dtype=tf.float32, shape=[], name="dropout")
         self.lr_pl = tf.placeholder(dtype=tf.float32, shape=[], name="lr_pl")
@@ -68,8 +71,8 @@ class BiLSTM_CRF(object):
     def biLSTM_layer_op(self):
         """ 定义BiLSTM层的变量(变量作用域"bi-lstm") """
         with tf.variable_scope("bi-lstm"):
-            cell_fw = LSTMCell(self.hidden_dim) # 前向LSTM单元 cell_fw
-            cell_bw = LSTMCell(self.hidden_dim) # 后向LSTM单元 cell_bw
+            cell_fw = GRUCell(self.hidden_dim) # 前向LSTM单元 cell_fw
+            cell_bw = GRUCell(self.hidden_dim) # 后向LSTM单元 cell_bw
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
@@ -252,7 +255,7 @@ class BiLSTM_CRF(object):
 
 
 
-        if int(math.log2(epoch + 1)) == math.log2(epoch + 1):  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
+        if epoch % 20 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
             label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
             self.evaluate(label_list_train, seq_len_list_train, train, epoch)
@@ -275,7 +278,9 @@ class BiLSTM_CRF(object):
         # 对输入字id的list做zero padding到此batch最大句子长度，但是保留每个句子的实际长度
 
         feed_dict = {"word_ids:0": word_ids,
-                     "sequence_lengths:0": seq_len_list}
+                     "sequence_lengths:0": seq_len_list,
+                     "max_length:0": max_len,
+                     "batch_size:0": len(seq_len_list)}
         if labels is not None: # dev / eval时可能为空
             labels_, _, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
             feed_dict["labels:0"] = labels_
