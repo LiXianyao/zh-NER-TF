@@ -16,7 +16,7 @@ def content_completion(content):
     if content[-1] != ">":  # 句尾漏了标注
         content += "</o>"
 
-    content = fill_org(content)
+    #content = fill_org(content)
     return content
 
 
