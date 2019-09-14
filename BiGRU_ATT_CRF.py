@@ -119,20 +119,20 @@ class BiGRU_ATT_CRF(object):
                                 shape=[2 * self.hidden_dim, 2 * self.hidden_dim],
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
-            self.W_k = tf.get_variable(name="W_k",
+            """self.W_k = tf.get_variable(name="W_k",
                                   shape=[2 * self.hidden_dim, 2 * self.hidden_dim],
                                   initializer=tf.contrib.layers.xavier_initializer(),
                                   dtype=tf.float32)
             self.V = tf.get_variable(name="V",
                                   shape=[2 * self.hidden_dim, 1],
                                   initializer=tf.contrib.layers.xavier_initializer(),
-                                  dtype=tf.float32)
+                                  dtype=tf.float32)"""
 
             batch_cnt = tf.constant(0, dtype=tf.int32)
             batch_att_res = tf.zeros([1, self.max_length, 2 * self.hidden_dim])  # 先初始化一个0行，之后再去掉
             loop_con = lambda cnt, _: tf.cond(cnt < self.var_batch_size, lambda: True, lambda: False)
             for batch in range(self.batch_size):
-                batch_cnt, batch_att_res = tf.while_loop(loop_con, self.compute_attention_weight, [batch_cnt, batch_att_res], shape_invariants=[batch_cnt.shape, tf.TensorShape([None, None, 2*self.hidden_dim])])
+                batch_cnt, batch_att_res = tf.while_loop(loop_con, self.compute_attention_weight_2, [batch_cnt, batch_att_res], shape_invariants=[batch_cnt.shape, tf.TensorShape([None, None, 2*self.hidden_dim])])
                 #att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
             #self.att_repr = tf.stack(att_repr)
             #self.att_repr = self.compute_batch_attention_weight(query=self.gru_output, max_len=max_len, batch_size=batch_size)
@@ -164,6 +164,23 @@ class BiGRU_ATT_CRF(object):
         score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen*seqlen, 1) 即query和每个key的score值
         score = tf.reshape(score, [seq_len, seq_len])
         alpha = tf.nn.softmax(score, axis=1)  # 计算att权重, (seqlen, seqlen)
+        #print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
+        #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
+        att_repre = tf.matmul(alpha, query)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
+
+        padding = tf.zeros([self.max_length - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
+        att_repre = tf.expand_dims(tf.concat([att_repre, padding], axis=0), 0) # 1, maxlen, hdim
+        batch += 1
+        loop_res = tf.concat([loop_res, att_repre], 0) # 这句话的att结果拼上去
+        return batch, loop_res
+
+    def compute_attention_weight_2(self, batch, loop_res):
+        seq_len = self.sequence_lengths[batch]
+        query = self.gru_output[batch, : seq_len, :]
+        linear = tf.matmul(query, self.W_q)  # (l, 2*h) (2*h, 2*h)  => l, 2*h
+        linear = tf.matmul(linear, tf.transpose(query)) # => l * l
+
+        alpha = tf.nn.softmax(linear, axis=1)  # 计算att权重, (seqlen, seqlen)
         #print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
         #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
         att_repre = tf.matmul(alpha, query)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
@@ -319,7 +336,7 @@ class BiGRU_ATT_CRF(object):
             self.file_writer.add_summary(summary, step_num)
 
 
-
+        self.lr = self.lr * 0.9
         if epoch % 20 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
             label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
