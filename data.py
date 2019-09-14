@@ -183,7 +183,7 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, unk='<UNK>'):
         labels.append(label_)
 
     if len(seqs) != 0:
-        seqs.extend([[]] * (batch_size-len(seqs)))
-        labels.extend([[]] * (batch_size - len(labels)))
+        #seqs.extend([[]] * (batch_size-len(seqs)))
+        #labels.extend([[]] * (batch_size - len(labels)))
         yield seqs, labels
 
