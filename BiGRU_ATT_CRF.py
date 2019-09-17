@@ -33,6 +33,7 @@ class BiGRU_ATT_CRF(object):
         self.logger = get_logger(paths['log_path'])
         self.result_path = paths['result_path']
         self.config = config
+        self.rho = args.rho
 
     def build_graph(self):
         self.add_placeholders()
@@ -250,6 +251,9 @@ class BiGRU_ATT_CRF(object):
         self.merged = tf.summary.merge_all()
         self.file_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
 
+    def update_lr(self, epoch):
+        self.lr = self.lr / (1 + self.rho * epoch)
+
     def train(self, train, dev):
         """
 
@@ -279,6 +283,7 @@ class BiGRU_ATT_CRF(object):
                     self.logger.info("FB1值取得新的最优值%.2f，保存模型"%evaluate_dict["FB1"])
                     saver.save(sess, self.model_path, global_step=epoch)
                     fb1 = evaluate_dict["FB1"]
+                self.update_lr(epoch)
 
     def test(self, test):
         saver = tf.train.import_meta_graph(self.model_path + ".meta")
@@ -336,7 +341,6 @@ class BiGRU_ATT_CRF(object):
             self.file_writer.add_summary(summary, step_num)
 
 
-        self.lr = self.lr * 0.9
         if epoch % 20 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
             label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)

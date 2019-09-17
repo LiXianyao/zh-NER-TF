@@ -37,6 +37,7 @@ parser.add_argument('--demo_model', type=str, default='1521112368', help='model 
 parser.add_argument('--unk', type=str, default='<UNK>', help='the tag for unknown word when a word is missing in the word2id')
 parser.add_argument('--word2id', type=str, default='word2id.pkl', help='word2id file name(same dir with the train_data)')
 parser.add_argument('--restore', type=str2bool, default=False, help='use exisiting checkpoint.')
+parser.add_argument('--rho', type=float, default=0.02, help='learning rate decrease speed by each epoch')
 args = parser.parse_args()
 
 
@@ -57,8 +58,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data_0910')
-    test_path = os.path.join('.', args.test_data, 'test_data_0910')
+    train_path = os.path.join('.', args.train_data, 'train_data')
+    test_path = os.path.join('.', args.test_data, 'test_data')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
