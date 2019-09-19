@@ -34,11 +34,13 @@ class CNN_BiGRU_ATT_CRF(object):
         self.result_path = paths['result_path']
         self.config = config
         self.embedding_dim = args.embedding_dim
+        self.rho = args.rho
 
     def build_graph(self):
         self.add_placeholders()
         self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
-        self.biLSTM_layer_op()
+        self.representation_layer_op()
+        #self.biLSTM_layer_op()
         self.attention_layer_op()
         self.softmax_pred_op()
         self.logit_op()
@@ -68,7 +70,32 @@ class CNN_BiGRU_ATT_CRF(object):
             word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
                                                      ids=self.word_ids,  # 输入的loc
                                                      name="word_embeddings")
+        # batch, max_seq, embedding_dim
         self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout_pl)  # 套个dropout层后才是最后的embedding层
+
+    def representation_layer_op(self):
+        """ 使用cnn对输入的ebedding进行卷积，生成近似的词表示 """
+        with tf.variable_scope("char_representation"):
+            self.char_cnn_W_1 = tf.get_variable(name="cnn_W1",
+                                           shape=[1, self.embedding_dim, 2*self.hidden_dim],
+                                           initializer=tf.contrib.layers.xavier_initializer(),
+                                           dtype=tf.float32)
+            self.char_cnn_W_3 = tf.get_variable(name="cnn_W3",
+                                           shape=[3, self.embedding_dim, 2*self.hidden_dim],
+                                           initializer=tf.contrib.layers.xavier_initializer(),
+                                           dtype=tf.float32)
+            self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
+                                           shape=[5, self.embedding_dim, 2*self.hidden_dim],
+                                           initializer=tf.contrib.layers.xavier_initializer(),
+                                           dtype=tf.float32)
+            #in: batch, max_seq, embedding_dim, 则kernel = [subseqlen, embedding_dim, output_channal]
+            #out: batch, max_seq, hidden
+            char_cnn_1 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_1, stride=1, padding="SAME")), 1)
+            char_cnn_3 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_3, stride=1, padding="SAME")), 1)
+            char_cnn_5 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_5, stride=1, padding="SAME")), 1)
+            char_cnn_repr = tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3, char_cnn_5], 1),
+                                                ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
+            self.gru_output = tf.reshape(char_cnn_repr, [self.var_batch_size, self.max_length, 2 * self.hidden_dim])
 
     def biLSTM_layer_op(self):
         """ 定义BiLSTM层的变量(变量作用域"bi-lstm") """
@@ -107,7 +134,7 @@ class CNN_BiGRU_ATT_CRF(object):
 
             """ BiGRU的输出跟ATT的结果拼接，后接一层全连接，由[-1, 4*hidden_dim]->[-1, 7（num_tags）] """
             mat_time = tf.shape(output)[1]
-            output = tf.concat([output, self.att_repr], axis=-1)
+            output = tf.concat([output, self.batch_att_res], axis=-1)
             output = tf.nn.dropout(output, self.dropout_pl)  # BiLSTM的结果过个dropout层
             #print("output with att shape={}".format(output.shape))
             output = tf.reshape(output, [-1, 4 * self.hidden_dim])
@@ -180,51 +207,38 @@ class CNN_BiGRU_ATT_CRF(object):
                                   shape=[2 * self.hidden_dim, 2 * self.hidden_dim],
                                   initializer=tf.contrib.layers.xavier_initializer(),
                                   dtype=tf.float32)
-            self.V = tf.get_variable(name="V",
-                                  shape=[2 * self.hidden_dim, 1],
-                                  initializer=tf.contrib.layers.xavier_initializer(),
-                                  dtype=tf.float32)
+            """self.V = tf.get_variable(name="V",
+                      shape=[2 * self.hidden_dim, 1],
+                      initializer=tf.contrib.layers.xavier_initializer(),
+                      dtype=tf.float32)"""
 
-            max_len = self.max_length
-            att_repr = []
+            batch_cnt = tf.constant(0, dtype=tf.int32)
+            batch_att_res = tf.zeros([1, self.max_length, 2 * self.hidden_dim])  # 先初始化一个0行，之后再去掉
+            loop_con = lambda cnt, _: tf.cond(cnt < self.var_batch_size, lambda: True, lambda: False)
             for batch in range(self.batch_size):
-                seq_len = self.sequence_lengths[batch]
-                query = self.gru_output[batch, : seq_len, :]
-                att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
-            self.att_repr = tf.stack(att_repr)
+                batch_cnt, batch_att_res = tf.while_loop(loop_con, self.compute_attention_weight, [batch_cnt, batch_att_res], shape_invariants=[batch_cnt.shape, tf.TensorShape([None, None, 2*self.hidden_dim])])
+                #att_repr.append(self.compute_attention_weight(query, query, seq_len, max_len))
+            #self.att_repr = tf.stack(att_repr)
             #self.att_repr = self.compute_batch_attention_weight(query=self.gru_output, max_len=max_len, batch_size=batch_size)
-            print(self.att_repr.shape)
+            #print(self.att_repr.shape)
+            self.batch_att_res = batch_att_res[1:]
 
-    def compute_batch_attention_weight(self, query, max_len, batch_size):
-        query = tf.reshape(query, [batch_size * max_len, 2 * self.hidden_dim])  # (batch*maxlen, 2*hidden)
-        Q_exp = tf.reshape(tf.matmul(query, self.W_q), [batch_size, max_len, 2 * self.hidden_dim])  # (b, l , 2*hidden)
-        K_exp = tf.reshape(tf.matmul(query, self.W_k), [batch_size, max_len, 2 * self.hidden_dim])  # (b, l , 2*hidden)
-        linear = tf.reshape(tf.expand_dims(Q_exp, 2) + tf.expand_dims(K_exp, 1), [-1, 2 * self.hidden_dim])  #(bacth_size*max_len*max_len , 2*h_dim)
-        print("linear's shape is {}，Q_exp's shape is {}, K_exp's shape is{}, max_len is {}".format(linear.shape, Q_exp.shape,
-                                                                                    K_exp.shape, max_len))
-        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (bacth_size*max_len*max_len, 1) 即query和每个key的score值
-        alpha = tf.nn.softmax(tf.reshape(score, [batch_size, max_len, max_len]), axis=1)  # 计算att权重, (bacth_size, max_len, max_len)
-        print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
-        #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
-        query = tf.reshape(query, [batch_size, max_len, 2 * self.hidden_dim])  # (batch*maxlen, 2*hidden)
-        att_repre = tf.matmul(alpha, query)  # (batch, maxlen,maxlen)*(batch, maxlen,hdim) = batchm maxlen, hdim
-
-        return att_repre
-
-    def compute_attention_weight(self, query, key, seq_len, max_len):
-        linear = tf.reshape(tf.expand_dims(tf.matmul(query, self.W_q), 1) + tf.expand_dims(tf.matmul(key, self.W_k), 0), [seq_len*seq_len, 2 * self.hidden_dim])  #(seqlen*seqlen , 2*h_dim)
+    def compute_attention_weight(self, batch, loop_res):
+        seq_len = self.sequence_lengths[batch]
+        query = self.gru_output[batch, : seq_len, :]
+        linear = tf.expand_dims(tf.matmul(query, self.W_q), 1) + tf.expand_dims(tf.matmul(query, self.W_k), 0)  #(seqlen, seqlen , 2*h_dim)
         #print("linear's shape is {}，Q_exp's shape is {}, K_exp's shape is{}, seq_len is{}. max_len is {}".format(linear.shape, Q_exp.shape,
         #                                                                            K_exp.shape, seq_len, max_len))
-        score = tf.matmul(tf.nn.tanh(linear), self.V)  # (seqlen*seqlen, 1) 即query和每个key的score值
-        score = tf.reshape(score, [seq_len, seq_len])
-        alpha = tf.nn.softmax(score, axis=1)  # 计算att权重, (seqlen, seqlen)
-        #print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
-        #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
-        att_repre = tf.matmul(alpha, key)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
+        score = tf.sigmoid(linear)   # element-wise, (seqlen, seqlen , 2*h_dim)
+        alpha_ij = tf.multiply(score, tf.expand_dims(query, 1))  # (seqlen, seqlen , 2*h_dim)
+        alpha = tf.divide(tf.reshape(tf.reduce_sum(alpha_ij, 1), [seq_len, 2 * self.hidden_dim]), tf.to_float(seq_len))  # (seqlen, 1 , 2*h_dim) -> (seqlen, 2*hid_dim)
 
-        padding = tf.zeros([max_len - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
-        att_repre = tf.concat([att_repre, padding], axis=0)
-        return att_repre
+        padding = tf.zeros([self.max_length - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
+        att_repre = tf.expand_dims(tf.concat([tf.tanh(alpha), padding], axis=0), 0)  # 1, maxlen, hdim
+
+        loop_res = tf.concat([loop_res, att_repre], 0)  # 这句话的att结果拼上去
+        batch += 1
+        return batch, loop_res
 
     def loss_op(self):
         """CRF层+loss计算"""
@@ -285,6 +299,9 @@ class CNN_BiGRU_ATT_CRF(object):
         self.merged = tf.summary.merge_all()
         self.file_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
 
+    def update_lr(self, epoch):
+        self.lr = self.lr / (1 + self.rho * epoch)
+
     def train(self, train, dev):
         """
 
@@ -314,6 +331,7 @@ class CNN_BiGRU_ATT_CRF(object):
                     self.logger.info("FB1值取得新的最优值%.2f，保存模型"%evaluate_dict["FB1"])
                     saver.save(sess, self.model_path, global_step=epoch)
                     fb1 = evaluate_dict["FB1"]
+                self.update_lr(epoch)
 
     def test(self, test):
         saver = tf.train.import_meta_graph(self.model_path + ".meta")

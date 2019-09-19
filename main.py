@@ -4,6 +4,7 @@ import numpy as np
 import os, argparse, time, random
 from model import BiLSTM_CRF
 from BiGRU_ATT_CRF import BiGRU_ATT_CRF
+from CNN_BiGRU_ATT_CRF import CNN_BiGRU_ATT_CRF
 from utils import str2bool, get_logger, get_entity, get_multiple_entity
 from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
 
@@ -67,7 +68,7 @@ if args.mode != 'demo':
 ## paths setting
 """ 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
-timestamp = time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' else args.demo_model
+timestamp = 'test'#time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' else args.demo_model
 args.demo_model = timestamp
 output_path = os.path.join('.', args.train_data+"_save", timestamp)  # 模型保存的目录 + 时间戳作为模型的名字
 if not os.path.exists(output_path): os.makedirs(output_path)  # 目录不存在则创建对应目录
@@ -103,7 +104,7 @@ if args.mode == 'train':
     count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
     count_oov(word2id, test_data, log_path, type="test_data")
 
-    model = BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = CNN_BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
 
     ## hyperparameters-tuning, split train/dev
