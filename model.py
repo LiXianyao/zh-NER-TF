@@ -34,6 +34,7 @@ class BiLSTM_CRF(object):
         self.result_path = paths['result_path']
         self.config = config
         self.embedding_dim = args.embedding_dim
+        self.rho = args.rho
 
     def build_graph(self):
         self.add_placeholders()
@@ -168,6 +169,9 @@ class BiLSTM_CRF(object):
         self.merged = tf.summary.merge_all()
         self.file_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
 
+    def update_lr(self, epoch):
+        self.lr = self.lr / (1 + self.rho * epoch)
+
     def train(self, train, dev):
         """
 
@@ -197,6 +201,7 @@ class BiLSTM_CRF(object):
                     self.logger.info("FB1值取得新的最优值%.2f，保存模型"%evaluate_dict["FB1"])
                     saver.save(sess, self.model_path, global_step=epoch)
                     fb1 = evaluate_dict["FB1"]
+                self.update_lr(epoch)
 
     def test(self, test):
         saver = tf.train.import_meta_graph(self.model_path + ".meta")
