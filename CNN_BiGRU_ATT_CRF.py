@@ -40,7 +40,7 @@ class CNN_BiGRU_ATT_CRF(object):
         self.add_placeholders()
         self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
         self.representation_layer_op()
-        #self.biLSTM_layer_op()
+        self.biLSTM_layer_op()
         self.attention_layer_op()
         self.softmax_pred_op()
         self.logit_op()
@@ -77,25 +77,26 @@ class CNN_BiGRU_ATT_CRF(object):
         """ 使用cnn对输入的ebedding进行卷积，生成近似的词表示 """
         with tf.variable_scope("char_representation"):
             self.char_cnn_W_1 = tf.get_variable(name="cnn_W1",
-                                           shape=[1, self.embedding_dim, 2*self.hidden_dim],
+                                           shape=[1, self.embedding_dim, self.hidden_dim],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
             self.char_cnn_W_3 = tf.get_variable(name="cnn_W3",
-                                           shape=[3, self.embedding_dim, 2*self.hidden_dim],
+                                           shape=[3, self.embedding_dim, self.hidden_dim],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
             self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
-                                           shape=[5, self.embedding_dim, 2*self.hidden_dim],
+                                           shape=[5, self.embedding_dim, self.hidden_dim],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
             #in: batch, max_seq, embedding_dim, 则kernel = [subseqlen, embedding_dim, output_channal]
             #out: batch, max_seq, hidden
+            #tf.nn.dropout(self.word_embeddings, self.dropout_pl)
             char_cnn_1 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_1, stride=1, padding="SAME")), 1)
             char_cnn_3 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_3, stride=1, padding="SAME")), 1)
             char_cnn_5 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_5, stride=1, padding="SAME")), 1)
             char_cnn_repr = tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3, char_cnn_5], 1),
                                                 ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
-            self.gru_output = tf.reshape(char_cnn_repr, [self.var_batch_size, self.max_length, 2 * self.hidden_dim])
+            self.gru_input = tf.reshape(char_cnn_repr, [self.var_batch_size, self.max_length, self.hidden_dim])
 
     def biLSTM_layer_op(self):
         """ 定义BiLSTM层的变量(变量作用域"bi-lstm") """
@@ -105,7 +106,7 @@ class CNN_BiGRU_ATT_CRF(object):
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
-                inputs=self.word_embeddings,
+                inputs=self.gru_input,
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             """
@@ -115,7 +116,7 @@ class CNN_BiGRU_ATT_CRF(object):
 				·output_fw_state, output_bw_state 则分别是两个方向最后的隐藏状态组成的二元组，类型为LSTMStateTuple(c, h)
                 当句子长度<max_time时，fw_state中的h是output_fw张量中不全为零的最后一行（正向，反向的时候是第一行）
             """
-            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
+            output = tf.concat([output_fw_seq, output_bw_seq], axis=-1)  # 把正反向的输出在depth维度(hidden_state)上接起来concat
             self.gru_output = output
 
     def logit_op(self):
@@ -123,7 +124,7 @@ class CNN_BiGRU_ATT_CRF(object):
         output = self.gru_output
         with tf.variable_scope("proj"):
             W = tf.get_variable(name="W",
-                                shape=[4 * self.hidden_dim, self.num_tags],
+                                shape=[2 * self.hidden_dim, self.num_tags],
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
@@ -134,10 +135,11 @@ class CNN_BiGRU_ATT_CRF(object):
 
             """ BiGRU的输出跟ATT的结果拼接，后接一层全连接，由[-1, 4*hidden_dim]->[-1, 7（num_tags）] """
             mat_time = tf.shape(output)[1]
-            output = tf.concat([output, self.batch_att_res], axis=-1)
+            #output = tf.concat([output, self.batch_att_res], axis=-1)
+            output = self.batch_att_res
             output = tf.nn.dropout(output, self.dropout_pl)  # BiLSTM的结果过个dropout层
             #print("output with att shape={}".format(output.shape))
-            output = tf.reshape(output, [-1, 4 * self.hidden_dim])
+            output = tf.reshape(output, [-1, 2 * self.hidden_dim])
             pred = tf.matmul(output, W) + b
 
             self.logits = tf.reshape(pred, [-1, mat_time, self.num_tags]) # 形状还原回 batch, maxtime, num_tags
