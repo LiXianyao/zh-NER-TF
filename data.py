@@ -26,7 +26,7 @@ def read_corpus(corpus_path):
             [char, label] = line.strip().split()
             sent_.append(char)
             tag_.append(label)
-            begin_.append(1) if tag_[0] == "B" else begin_.append(0)
+            begin_.append(1) if label[0] == "B" else begin_.append(0)
         else:
             for tdx in range(len(tag_)):
                 tag = tag_[tdx]

@@ -37,7 +37,7 @@ class BiLSTM_CRF(object):
         self.embedding_dim = args.embedding_dim
         self.rho = args.rho
         self.boundary = args.boundary
-        self.boundary_embedding = 100
+        self.boundary_embedding = 50
 
     def build_graph(self):
         self.add_placeholders()
@@ -165,6 +165,8 @@ class BiLSTM_CRF(object):
             self.logits_end = tf.reshape(pred_end, [-1, shape_tensor[1], 2])  # 形状还原回 batch, maxtime, 2
             self.begin_loss = self.softmax_loss(self.logits_begin, self.begins)
             self.end_loss = self.softmax_loss(self.logits_end, self.ends)
+            self.logits_begin = tf.argmax(self.logits_begin, axis=-1, name="logits_begin")
+            self.logits_end = tf.argmax(self.logits_end, axis=-1, name="logits_end")
 
             self.boundary_output= tf.nn.dropout(tf.reshape(tf.concat([tf.matmul(pred_begin, begin_embedding), tf.matmul(pred_end, end_embedding)], axis=1),[-1, shape_tensor[1], 2 * self.boundary_embedding]), self.dropout_pl)
             tf.summary.scalar("begin_loss", self.begin_loss)
@@ -218,7 +220,7 @@ class BiLSTM_CRF(object):
                 optim = tf.train.GradientDescentOptimizer(learning_rate=self.lr_pl)
 
             train_loss = self.loss
-            if self.boundary: train_loss += 10. * self.begin_loss + 10. * self.end_loss
+            if self.boundary: train_loss += 10. * self.begin_loss + 100. * self.end_loss
             grads_and_vars = optim.compute_gradients(train_loss)  # 将损失传入优化器
             #for g, v in grads_and_vars:
             #    tf.summary.scalar(v.name, g)  # 参数可视化：显示这个 标量信息 loss
@@ -281,8 +283,8 @@ class BiLSTM_CRF(object):
         with tf.Session(config=self.config) as sess:
             self.logger.info('=========== testing ===========')
             saver.restore(sess, self.model_path)
-            label_list, seq_len_list = self.dev_one_epoch(sess, test)
-            self.evaluate(label_list, seq_len_list, test)
+            label_list, seq_len_list, begin_list, end_list = self.dev_one_epoch(sess, test)
+            self.evaluate(label_list, seq_len_list, begin_list, end_list, test)
 
     def demo_one(self, sess, sent):
         """
@@ -293,7 +295,7 @@ class BiLSTM_CRF(object):
         """
         label_list = []
         for seqs, labels, begins, ends in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False, unk=self.unk):
-            label_list_, _ = self.predict_one_batch(sess, seqs, demo=True)
+            label_list_, _, _, _ = self.predict_one_batch(sess, seqs, demo=True)
             label_list.extend(label_list_)
         label2tag = {}
         for tag, label in self.tag2label.items():
@@ -334,13 +336,13 @@ class BiLSTM_CRF(object):
 
         if epoch % 10 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
-            label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
-            train_evaluate = self.evaluate(label_list_train, seq_len_list_train, train, epoch)
+            label_list_train, seq_len_list_train, begin_list, end_list = self.dev_one_epoch(sess, train)
+            train_evaluate = self.evaluate(label_list_train, seq_len_list_train, begin_list, end_list, train, epoch)
             tf.summary.scalar("train_fb1", train_evaluate["FB1"])
 
         self.logger.info('===========validation / test===========')
-        label_list_dev, seq_len_list_dev = self.dev_one_epoch(sess, dev)
-        evaluate_dict = self.evaluate(label_list_dev, seq_len_list_dev, dev, epoch)
+        label_list_dev, seq_len_list_dev, begin_list, end_list = self.dev_one_epoch(sess, dev)
+        evaluate_dict = self.evaluate(label_list_dev, seq_len_list_dev, begin_list, end_list, dev, epoch)
         tf.summary.scalar("test_fb1",evaluate_dict["FB1"])
         return evaluate_dict, step_num
 
@@ -383,12 +385,14 @@ class BiLSTM_CRF(object):
         :param dev:
         :return:
         """
-        label_list, seq_len_list = [], []
+        label_list, seq_len_list, begin_list, end_list = [], [], [], []
         for seqs, labels, begins, ends in batch_yield(dev, self.batch_size, self.vocab, self.tag2label, shuffle=False, unk=self.unk):
-            label_list_, seq_len_list_ = self.predict_one_batch(sess, seqs)
+            label_list_, seq_len_list_, begin_list_, end_list_ = self.predict_one_batch(sess, seqs)
             label_list.extend(label_list_)
             seq_len_list.extend(seq_len_list_)
-        return label_list, seq_len_list
+            begin_list.extend(begin_list_)
+            end_list.extend(end_list_)
+        return label_list, seq_len_list, begin_list, end_list
 
     def predict_one_batch(self, sess, seqs, demo=False):
         """
@@ -401,27 +405,28 @@ class BiLSTM_CRF(object):
         """
         feed_dict, seq_len_list = self.get_feed_dict(seqs, dropout=1.0)
 
-        if self.CRF:  # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
-            """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
-            logits, transition_params = sess.run([tf.get_default_graph().get_tensor_by_name("logits:0"),
-                                                  tf.get_default_graph().get_tensor_by_name("transitions:0")],
-                                                 feed_dict=feed_dict)
+        """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
+        logits, transition_params, logits_begin, logits_end = sess.run([tf.get_default_graph().get_tensor_by_name("logits:0"),
+                                              tf.get_default_graph().get_tensor_by_name("transitions:0"),
+                                              tf.get_default_graph().get_tensor_by_name("boundary/logits_begin:0"),
+                                              tf.get_default_graph().get_tensor_by_name("boundary/logits_end:0")],
+                                             feed_dict=feed_dict)
+        if demo:
+            print("发射矩阵如下", logits, logits.shape)
+            print("转移概率矩阵如下", transition_params, transition_params.shape)
+        label_list = []
+        begin_list = []
+        end_list = []
+        for logit, seq_len, begin, end in zip(logits, seq_len_list, logits_begin, logits_end):
+            if not seq_len: continue
+            viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
             if demo:
-                print("发射矩阵如下", logits, logits.shape)
-                print("转移概率矩阵如下", transition_params, transition_params.shape)
-            label_list = []
-            for logit, seq_len in zip(logits, seq_len_list):
-                if not seq_len: continue
-                viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
-                if demo:
-                    print("最优序列：", viterbi_seq, "得分为%.4f"%_)
-                    self.print_viterbi_score(viterbi_seq, logit, transition_params)
-                label_list.append(viterbi_seq)
-            return label_list, seq_len_list
-
-        else:
-            label_list = sess.run(self.labels_softmax_, feed_dict=feed_dict)
-            return label_list, seq_len_list
+                print("最优序列：", viterbi_seq, "得分为%.4f"%_)
+                self.print_viterbi_score(viterbi_seq, logit, transition_params)
+            begin_list.append((begin[:seq_len]))
+            end_list.append((end[:seq_len]))
+            label_list.append(viterbi_seq)
+        return label_list, seq_len_list, begin_list, end_list
 
     def print_viterbi_score(self, viterbi_seq, logit, transition_params):
         j = 0
@@ -449,7 +454,7 @@ class BiLSTM_CRF(object):
                 trans_score = transition_params[now][next]  # 从now状态转移到next状态
 
 
-    def evaluate(self, label_list, seq_len_list, data, epoch=None):
+    def evaluate(self, label_list, seq_len_list, begin_list, end_list, data, epoch=None):
         """
         检验预测序列结果和实际序列是否一致（生成结果的时候已经使用过了句子长度，已经没用了）
         对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
@@ -464,19 +469,20 @@ class BiLSTM_CRF(object):
             label2tag[label] = tag if label != 0 else label # {0:0, 1:"B-PER" ...}
 
         model_predict = []
-        for label_, (sent, tag, _, _) in zip(label_list, data): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
+        for label_, (sent, tag, _, _), begin_, end_ in zip(label_list, data, begin_list, end_list): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
             tag_ = [label2tag[label__] for label__ in label_] # 将label转换回tag（O以外）
             sent_res = []
             if len(label_) != len(sent):  # 异常，特别输出长度对不上的情况
                 print("sen len={}, label_len={}, tag_len={}".format(len(sent), len(tag_), len(tag)))
             for i in range(len(sent)):
-                sent_res.append([sent[i], tag[i], tag_[i]])
+                sent_res.append([sent[i], tag[i], tag_[i], begin_[i], end_[i]])
             model_predict.append(sent_res)
         epoch_num = str(epoch+1) if epoch != None else 'test'
         label_path = os.path.join(self.result_path, 'label_' + epoch_num)
+        all_path = os.path.join(self.result_path, 'all_' + epoch_num)
         metric_path = os.path.join(self.result_path, 'result_metric_' + epoch_num)
 
-        metrics = conlleval(model_predict, label_path, metric_path) # 调用脚本计算评估指标，第0行是token的情况，第1行是总体entity评估，余下行是逐个entity评估
+        metrics = conlleval(model_predict, label_path, all_path, metric_path) # 调用脚本计算评估指标，第0行是token的情况，第1行是总体entity评估，余下行是逐个entity评估
         for _ in metrics:
             self.logger.info(_)
         return self.metric2dict(metrics[1])
