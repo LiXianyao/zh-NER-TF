@@ -42,10 +42,15 @@ class BiLSTM_CRF(object):
     def build_graph(self):
         self.add_placeholders()
         self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
-        self.biLSTM_layer_op()
+        self.biLSTM_layer_op(self.word_embeddings)
         self.softmax_pred_op()
-        self.boundary_op()
-        self.logit_op()
+        self.boundary_op(self.rnn_output)
+
+        logit_input = self.rnn_output
+        if self.boundary:
+            logit_input = tf.concat([self.rnn_output, self.boundary_output],
+                               axis=-1)  # batch, maxtime, 2*hidden + 2*boundary_embedding
+        self.logit_op(logit_input)
         self.loss_op()
         self.trainstep_op()
         self.init_op()
@@ -75,7 +80,7 @@ class BiLSTM_CRF(object):
                                                      name="word_embeddings")
         self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout_pl)  # 套个dropout层后才是最后的embedding层
 
-    def biLSTM_layer_op(self):
+    def biLSTM_layer_op(self, lstm_input):
         """ 定义BiLSTM层的变量(变量作用域"bi-lstm") """
         with tf.variable_scope("bi-lstm"):
             cell_fw = GRUCell(self.hidden_dim) # 前向LSTM单元 cell_fw
@@ -83,7 +88,7 @@ class BiLSTM_CRF(object):
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
-                inputs=self.word_embeddings,
+                inputs=lstm_input,
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             """
@@ -97,14 +102,10 @@ class BiLSTM_CRF(object):
             rnn_output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
             self.rnn_output = tf.nn.dropout(rnn_output, self.dropout_pl)
 
-    def logit_op(self):
-        output = self.rnn_output
-        hidden_size = 2*self.hidden_dim
-        if self.boundary:
-            output = tf.concat([self.rnn_output, self.boundary_embed], axis=-1) # batch, maxtime, 2*hidden + 2*boundary_embedding
-            hidden_size += 2 * self.boundary_embedding
+    def logit_op(self, logit_input):
+        hidden_size = logit_input.shape[2]
         with tf.variable_scope("proj"):
-            s = tf.shape(output)
+            s = tf.shape(logit_input)
             W = tf.get_variable(name="W",
                                 shape=[hidden_size, self.num_tags],
                                 initializer=tf.contrib.layers.xavier_initializer(),
@@ -115,18 +116,20 @@ class BiLSTM_CRF(object):
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
             """ BiLSTM的输出后接一层全连接，由[-1, 2*hidden_dim]->[-1, 7（num_tags）] """
-            output = tf.reshape(output, [-1, hidden_size])
+            output = tf.reshape(logit_input, [-1, hidden_size])
             pred = tf.matmul(output, W) + b
         self.logits = tf.reshape(pred, [-1, s[1], self.num_tags], name="logits")  # 形状还原回 batch, maxtime, num_tags
-        print(self.logits.name)
+        #print(self.logits.name)
 
-    def boundary_op(self):
+    def boundary_op(self, boundary_input):
         if not self.boundary: return
 
-        output = self.rnn_output
         with tf.variable_scope("boundary"):
+            shape_tensor = tf.shape(boundary_input)
+            shape_dimension = boundary_input.shape
+
             W_begin = tf.get_variable(name="W_begin",
-                                shape=[2 * self.hidden_dim, 2],
+                                shape=[shape_dimension[2], 2],
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
@@ -135,7 +138,7 @@ class BiLSTM_CRF(object):
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
             W_end = tf.get_variable(name="W_end",
-                                shape=[2 * self.hidden_dim, 2],
+                                shape=[shape_dimension[2], 2],
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
@@ -155,16 +158,15 @@ class BiLSTM_CRF(object):
                                 dtype=tf.float32)
 
             """ BiLSTM的输出后接两层层全连接，分别算两个单分类结果"""
-            s = tf.shape(output)
-            output = tf.reshape(output, [-1, 2*self.hidden_dim])
-            pred_begin = tf.matmul(output, W_begin) + b_begin
-            pred_end = tf.matmul(output, W_end) + b_end
-            self.logits_begin = tf.reshape(pred_begin, [-1, s[1], 2])  # 形状还原回 batch, maxtime, 2
-            self.logits_end = tf.reshape(pred_end, [-1, s[1], 2])  # 形状还原回 batch, maxtime, 2
+            boundary_input = tf.reshape(boundary_input, [-1, shape_tensor[2]])
+            pred_begin = tf.matmul(boundary_input, W_begin) + b_begin
+            pred_end = tf.matmul(boundary_input, W_end) + b_end
+            self.logits_begin = tf.reshape(pred_begin, [-1, shape_tensor[1], 2])  # 形状还原回 batch, maxtime, 2
+            self.logits_end = tf.reshape(pred_end, [-1, shape_tensor[1], 2])  # 形状还原回 batch, maxtime, 2
             self.begin_loss = self.softmax_loss(self.logits_begin, self.begins)
             self.end_loss = self.softmax_loss(self.logits_end, self.ends)
 
-            self.boundary_embed = tf.reshape(tf.concat([tf.matmul(pred_begin, begin_embedding), tf.matmul(pred_end, end_embedding)], axis=1),[-1, s[1], 2 * self.boundary_embedding])
+            self.boundary_output= tf.nn.dropout(tf.reshape(tf.concat([tf.matmul(pred_begin, begin_embedding), tf.matmul(pred_end, end_embedding)], axis=1),[-1, shape_tensor[1], 2 * self.boundary_embedding]), self.dropout_pl)
             tf.summary.scalar("begin_loss", self.begin_loss)
             tf.summary.scalar("end_loss", self.end_loss)
 
@@ -401,7 +403,7 @@ class BiLSTM_CRF(object):
 
         if self.CRF:  # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
             """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
-            logits, transition_params = sess.run([self.logits,
+            logits, transition_params = sess.run([tf.get_default_graph().get_tensor_by_name("logits:0"),
                                                   tf.get_default_graph().get_tensor_by_name("transitions:0")],
                                                  feed_dict=feed_dict)
             if demo:
