@@ -12,7 +12,9 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
         self.lookup_layer_op()  # 定义embedding层的变量（变量作用域"word")
         self.representation_layer_op()
         self.boundary_op(self.cnn_output)
-        rnn_input = tf.concat([self.cnn_output, self.boundary_output], axis=-1) # batch, maxtime, hidden + 2*boundary_embedding
+        rnn_input = self.cnn_output
+        if self.boundary:
+            rnn_input = tf.concat([rnn_input, self.boundary_output], axis=-1) # batch, maxtime, hidden + 2*boundary_embedding
         self.biLSTM_layer_op(rnn_input)
 
         self.attention_layer_op()
@@ -42,19 +44,17 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
                                            shape=[3, self.embedding_dim, self.hidden_dim],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
-            self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
-                                           shape=[5, self.embedding_dim, self.hidden_dim],
-                                           initializer=tf.contrib.layers.xavier_initializer(),
-                                           dtype=tf.float32)
+            #self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
+            #                               shape=[5, self.embedding_dim, self.hidden_dim],
+             #                              initializer=tf.contrib.layers.xavier_initializer(),
+             #                              dtype=tf.float32)
             #in: batch, max_seq, embedding_dim, 则kernel = [subseqlen, embedding_dim, output_channal]
-            #out: batch, max_seq, hidden
-            #tf.nn.dropout(self.word_embeddings, self.dropout_pl)
             char_cnn_1 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_1, stride=1, padding="SAME")), 1)
             char_cnn_3 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_3, stride=1, padding="SAME")), 1)
-            char_cnn_5 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_5, stride=1, padding="SAME")), 1)
+            #char_cnn_5 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_5, stride=1, padding="SAME")), 1)
             pooling_res = tf.reshape(
-                                tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3, char_cnn_5], 1),
-                                                ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
+                                tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3], 1),#, char_cnn_5], 1),
+                                                ksize=[1, 2, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
                                 , [self.var_batch_size, self.max_length, self.hidden_dim])
             self.cnn_output = tf.nn.dropout(pooling_res, self.dropout_pl)  # dropout后得到输出
 
