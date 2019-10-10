@@ -37,7 +37,7 @@ class BiLSTM_CRF(object):
         self.embedding_dim = args.embedding_dim
         self.rho = args.rho
         self.boundary = args.boundary
-        self.boundary_embedding = 50
+        self.boundary_embedding = 100
 
     def build_graph(self):
         self.add_placeholders()
@@ -111,7 +111,7 @@ class BiLSTM_CRF(object):
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
-            b = tf.get_variable(name="b",
+            b = tf.get_variable(name="bias",
                                 shape=[self.num_tags],
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
@@ -133,7 +133,7 @@ class BiLSTM_CRF(object):
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
-            b_begin = tf.get_variable(name="b_begin",
+            b_begin = tf.get_variable(name="bias_begin",
                                 shape=[2],
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
@@ -142,7 +142,7 @@ class BiLSTM_CRF(object):
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
-            b_end = tf.get_variable(name="b_end",
+            b_end = tf.get_variable(name="bias_end",
                                 shape=[2],
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
@@ -201,6 +201,14 @@ class BiLSTM_CRF(object):
         losses = tf.boolean_mask(losses, mask)
         return tf.reduce_mean(losses)
 
+    def _l2loss(self):
+        vars_ = [v for v in tf.trainable_variables() if 'bias' not in v.name
+                 and 'word_embedding' not in v.name and 'real_pos1_embedding' not in v.name and 'real_pos2_embedding' not in v.name]
+        l2loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in vars_]),
+                             0.001, name='l2loss')
+        tf.summary.scalar("l2loss", l2loss)
+        return l2loss
+
     def trainstep_op(self):
         with tf.variable_scope("train_step"):
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -219,8 +227,9 @@ class BiLSTM_CRF(object):
             else:
                 optim = tf.train.GradientDescentOptimizer(learning_rate=self.lr_pl)
 
-            train_loss = self.loss
-            if self.boundary: train_loss += 10. * self.begin_loss + 100. * self.end_loss
+            train_loss = self.loss + 0.3 * self._l2loss()
+            if self.boundary: train_loss += self.begin_loss + self.end_loss
+            tf.summary.scalar("train_loss", train_loss)
             grads_and_vars = optim.compute_gradients(train_loss)  # 将损失传入优化器
             #for g, v in grads_and_vars:
             #    tf.summary.scalar(v.name, g)  # 参数可视化：显示这个 标量信息 loss
@@ -241,6 +250,7 @@ class BiLSTM_CRF(object):
 
     def update_lr(self, epoch):
         self.lr = self.lr_init / (1 + self.rho * epoch)
+        tf.summary.scalar("lr", self.lr)
 
     def train(self, train, dev):
         """
