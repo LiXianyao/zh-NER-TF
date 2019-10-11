@@ -16,8 +16,7 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
         if self.boundary:
             rnn_input = tf.concat([rnn_input, self.boundary_output], axis=-1) # batch, maxtime, hidden + 2*boundary_embedding
         self.biLSTM_layer_op(rnn_input)
-
-        self.attention_layer_op()
+        self.attention_layer_op(self.rnn_output)
         self.softmax_pred_op()
         self.logit_op(self.batch_att_res)
         self.loss_op()
@@ -44,17 +43,17 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
                                            shape=[3, self.embedding_dim, self.hidden_dim],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
-            #self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
-            #                               shape=[5, self.embedding_dim, self.hidden_dim],
-             #                              initializer=tf.contrib.layers.xavier_initializer(),
-             #                              dtype=tf.float32)
+            self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
+                                           shape=[5, self.embedding_dim, self.hidden_dim],
+                                           initializer=tf.contrib.layers.xavier_initializer(),
+                                           dtype=tf.float32)
             #in: batch, max_seq, embedding_dim, 则kernel = [subseqlen, embedding_dim, output_channal]
             char_cnn_1 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_1, stride=1, padding="SAME")), 1)
             char_cnn_3 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_3, stride=1, padding="SAME")), 1)
-            #char_cnn_5 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_5, stride=1, padding="SAME")), 1)
+            char_cnn_5 = tf.expand_dims(tf.tanh(tf.nn.conv1d(self.word_embeddings, self.char_cnn_W_5, stride=1, padding="SAME")), 1)
             pooling_res = tf.reshape(
-                                tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3], 1),#, char_cnn_5], 1),
-                                                ksize=[1, 2, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
+                                tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3, char_cnn_5], 1),
+                                                ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
                                 , [self.var_batch_size, self.max_length, self.hidden_dim])
             self.cnn_output = tf.nn.dropout(pooling_res, self.dropout_pl)  # dropout后得到输出
 
@@ -119,37 +118,39 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
         att_repre = alpha * key  # att = alpha*xj
         return att_repre
 
-    def attention_layer_op(self):
+    def attention_layer_op(self, attention_input):
         with tf.variable_scope("att"):
+            shape = attention_input.shape
             self.W_q = tf.get_variable(name="W_q",
-                                shape=[2 * self.hidden_dim, 2 * self.hidden_dim],
+                                shape=[shape[2], shape[2]],
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
             self.W_k = tf.get_variable(name="W_k",
-                                  shape=[2 * self.hidden_dim, 2 * self.hidden_dim],
+                                  shape=[shape[2], shape[2]],
                                   initializer=tf.contrib.layers.xavier_initializer(),
                                   dtype=tf.float32)
 
             batch_cnt = tf.constant(0, dtype=tf.int32)
-            batch_att_res = tf.zeros([1, self.max_length, 2 * self.hidden_dim])  # 先初始化一个0行，之后再去掉
-            loop_con = lambda cnt, _: tf.cond(cnt < self.var_batch_size, lambda: True, lambda: False)
+            batch_att_res = tf.zeros([1, self.max_length, shape[2]])  # 先初始化一个0行，之后再去掉
+            loop_con = lambda cnt, inp, out: tf.cond(cnt < self.var_batch_size, lambda: True, lambda: False)
             for batch in range(self.batch_size):
-                batch_cnt, batch_att_res = tf.while_loop(loop_con, self.compute_attention_weight, [batch_cnt, batch_att_res], shape_invariants=[batch_cnt.shape, tf.TensorShape([None, None, 2*self.hidden_dim])])
+                batch_cnt, attention_input, batch_att_res = tf.while_loop(loop_con, self.compute_attention_weight, [batch_cnt, attention_input, batch_att_res], shape_invariants=[batch_cnt.shape, attention_input.shape, tf.TensorShape([None, None, shape[2]])])
             self.batch_att_res = tf.nn.dropout(batch_att_res[1:],self.dropout_pl)
 
-    def compute_attention_weight(self, batch, loop_res):
+    def compute_attention_weight(self, batch, attention_input, loop_res):
         seq_len = self.sequence_lengths[batch]
-        query = self.rnn_output[batch, : seq_len, :]
+        query = attention_input[batch, : seq_len, :]
+        shape = query.shape
         linear = tf.expand_dims(tf.matmul(query, self.W_q), 1) + tf.expand_dims(tf.matmul(query, self.W_k), 0)  #(seqlen, seqlen , 2*h_dim)
         #print("linear's shape is {}，Q_exp's shape is {}, K_exp's shape is{}, seq_len is{}. max_len is {}".format(linear.shape, Q_exp.shape,
         #                                                                            K_exp.shape, seq_len, max_len))
         score = tf.sigmoid(linear)   # element-wise, (seqlen, seqlen , 2*h_dim)
         alpha_ij = tf.multiply(score, tf.expand_dims(query, 1))  # (seqlen, seqlen , 2*h_dim)
-        alpha = tf.divide(tf.reshape(tf.reduce_sum(alpha_ij, 1), [seq_len, 2 * self.hidden_dim]), tf.to_float(seq_len))  # (seqlen, 1 , 2*h_dim) -> (seqlen, 2*hid_dim)
+        alpha = tf.divide(tf.reshape(tf.reduce_sum(alpha_ij, 1), [seq_len, shape[-1]]), tf.to_float(seq_len))  # (seqlen, 1 , 2*h_dim) -> (seqlen, 2*hid_dim)
 
-        padding = tf.zeros([self.max_length - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
+        padding = tf.zeros([self.max_length - seq_len, shape[-1]], dtype=tf.float32)
         att_repre = tf.expand_dims(tf.concat([tf.tanh(alpha), padding], axis=0), 0)  # 1, maxlen, hdim
 
         loop_res = tf.concat([loop_res, att_repre], 0)  # 这句话的att结果拼上去
         batch += 1
-        return batch, loop_res
+        return batch, attention_input, loop_res
