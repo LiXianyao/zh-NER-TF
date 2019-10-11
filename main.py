@@ -38,7 +38,8 @@ parser.add_argument('--demo_model', type=str, default='1521112368', help='model 
 parser.add_argument('--unk', type=str, default='<UNK>', help='the tag for unknown word when a word is missing in the word2id')
 parser.add_argument('--word2id', type=str, default='word2id.pkl', help='word2id file name(same dir with the train_data)')
 parser.add_argument('--restore', type=str2bool, default=False, help='use exisiting checkpoint.')
-parser.add_argument('--rho', type=float, default=0.02, help='learning rate decrease speed by each epoch')
+parser.add_argument('--rho', type=float, default=0.0002, help='learning rate decrease speed by each epoch')
+parser.add_argument('--boundary', type=str2bool, default=True, help='training boundary loss')
 args = parser.parse_args()
 
 
@@ -59,8 +60,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data')
-    test_path = os.path.join('.', args.test_data, 'test_data')
+    train_path = os.path.join('.', args.train_data, 'train_data_0930')
+    test_path = os.path.join('.', args.test_data, 'test_data_0930')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
@@ -68,7 +69,7 @@ if args.mode != 'demo':
 ## paths setting
 """ 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
-timestamp = 'test'#time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' else args.demo_model
+timestamp = "debug" + time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' and not args.restore else args.demo_model
 args.demo_model = timestamp
 output_path = os.path.join('.', args.train_data+"_save", timestamp)  # 模型保存的目录 + 时间戳作为模型的名字
 if not os.path.exists(output_path): os.makedirs(output_path)  # 目录不存在则创建对应目录
