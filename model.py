@@ -227,7 +227,7 @@ class BiLSTM_CRF(object):
             else:
                 optim = tf.train.GradientDescentOptimizer(learning_rate=self.lr_pl)
 
-            train_loss = self.loss + 0.3 * self._l2loss()
+            train_loss = self.loss + self._l2loss()
             if self.boundary: train_loss += self.begin_loss + self.end_loss
             tf.summary.scalar("train_loss", train_loss)
             grads_and_vars = optim.compute_gradients(train_loss)  # 将损失传入优化器
