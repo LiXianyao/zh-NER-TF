@@ -60,8 +60,8 @@ else:
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data_0930')
-    test_path = os.path.join('.', args.test_data, 'test_data_0930')
+    train_path = os.path.join('.', args.train_data, 'train_data_1012')
+    test_path = os.path.join('.', args.test_data, 'test_data_1012')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
@@ -69,7 +69,7 @@ if args.mode != 'demo':
 ## paths setting
 """ 处理对模型结果等文件的保存名字及路径, 以及logger的保存位置 """
 paths = {}
-timestamp = "debug" + time.strftime("%Y%m%d%H%M", time.localtime()) if args.mode == 'train' and not args.restore else args.demo_model
+timestamp = time.strftime("%Y%m%d%H%M%S", time.localtime()) if args.mode == 'train' and not args.restore else args.demo_model
 args.demo_model = timestamp
 output_path = os.path.join('.', args.train_data+"_save", timestamp)  # 模型保存的目录 + 时间戳作为模型的名字
 if not os.path.exists(output_path): os.makedirs(output_path)  # 目录不存在则创建对应目录
@@ -105,7 +105,7 @@ if args.mode == 'train':
     count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
     count_oov(word2id, test_data, log_path, type="test_data")
 
-    model = CNN_BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
 
     ## hyperparameters-tuning, split train/dev
