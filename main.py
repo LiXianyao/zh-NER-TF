@@ -24,6 +24,7 @@ parser.add_argument('--test_data', type=str, default='data_path', help='test dat
 parser.add_argument('--batch_size', type=int, default=64, help='#sample of each minibatch')
 parser.add_argument('--epoch', type=int, default=40, help='#epoch of training')
 parser.add_argument('--hidden_dim', type=int, default=300, help='#dim of hidden state')
+parser.add_argument('--filter', type=int, default=100, help='#dim of CNNs filter size')
 parser.add_argument('--optimizer', type=str, default='Adam', help='Adam/Adadelta/Adagrad/RMSProp/Momentum/SGD')
 parser.add_argument('--CRF', type=str2bool, default=True, help='use CRF at the top layer. if False, use Softmax')
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
@@ -105,7 +106,7 @@ if args.mode == 'train':
     count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
     count_oov(word2id, test_data, log_path, type="test_data")
 
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = CNN_BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
 
     ## hyperparameters-tuning, split train/dev

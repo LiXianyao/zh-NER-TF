@@ -6,6 +6,7 @@ from model import BiLSTM_CRF
 class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
     def __init__(self, args, embeddings, tag2label, vocab, paths, config):
         super().__init__(args, embeddings, tag2label, vocab, paths, config)
+        self.filter_num = args.filter
 
     def build_graph(self):
         self.add_placeholders()
@@ -15,6 +16,7 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
         rnn_input = self.cnn_output
         if self.boundary:
             rnn_input = tf.concat([rnn_input, self.boundary_output], axis=-1) # batch, maxtime, hidden + 2*boundary_embedding
+        rnn_input = tf.concat([rnn_input, self.word_embeddings], axis=-1) # batch, maxtime, hidden + 2*boundary_embedding + wordembedding_dim
         self.biLSTM_layer_op(rnn_input)
         self.attention_layer_op(self.rnn_output)
         self.softmax_pred_op()
@@ -36,15 +38,15 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
         """ 使用cnn对输入的ebedding进行卷积，生成近似的词表示 """
         with tf.variable_scope("char_representation"):
             self.char_cnn_W_1 = tf.get_variable(name="cnn_W1",
-                                           shape=[1, self.embedding_dim, self.hidden_dim],
+                                           shape=[1, self.embedding_dim, self.filter_num],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
             self.char_cnn_W_3 = tf.get_variable(name="cnn_W3",
-                                           shape=[3, self.embedding_dim, self.hidden_dim],
+                                           shape=[3, self.embedding_dim, self.filter_num],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
             self.char_cnn_W_5 = tf.get_variable(name="cnn_W5",
-                                           shape=[5, self.embedding_dim, self.hidden_dim],
+                                           shape=[5, self.embedding_dim, self.filter_num],
                                            initializer=tf.contrib.layers.xavier_initializer(),
                                            dtype=tf.float32)
             #in: batch, max_seq, embedding_dim, 则kernel = [subseqlen, embedding_dim, output_channal]
@@ -54,7 +56,7 @@ class CNN_BiGRU_ATT_CRF(BiLSTM_CRF):
             pooling_res = tf.reshape(
                                 tf.nn.max_pool(tf.concat([char_cnn_1, char_cnn_3, char_cnn_5], 1),
                                                 ksize=[1, 3, 1, 1], strides=[1, 1, 1, 1], padding="VALID") # out-> batch, 1, max_seq, hidden_dim
-                                , [self.var_batch_size, self.max_length, self.hidden_dim])
+                                , [self.var_batch_size, self.max_length, self.filter_num])
             self.cnn_output = tf.nn.dropout(pooling_res, self.dropout_pl)  # dropout后得到输出
 
     def biLSTM_layer_op(self, lstm_input):
