@@ -37,7 +37,7 @@ class BiLSTM_CRF(object):
         self.embedding_dim = args.embedding_dim
         self.rho = args.rho
         self.boundary = args.boundary
-        self.boundary_embedding = 100
+        self.boundary_embedding = 50
 
     def build_graph(self):
         self.add_placeholders()
@@ -122,9 +122,13 @@ class BiLSTM_CRF(object):
         #print(self.logits.name)
 
     def boundary_op(self, boundary_input):
-        if not self.boundary: return
-
         with tf.variable_scope("boundary"):
+            if not self.boundary:
+                #为确保boundary模式不使用的时候程序正常运行，boundary=False时构造输出规模的zero张量
+                self.logits_begin = tf.zeros(shape=[self.var_batch_size, self.max_length], name="logits_begin", dtype=tf.int32)
+                self.logits_end = tf.zeros(shape=[self.var_batch_size, self.max_length], name="logits_end", dtype=tf.int32)
+                return
+
             shape_tensor = tf.shape(boundary_input)
             shape_dimension = boundary_input.shape
 
