@@ -190,6 +190,28 @@ class BiGRU_ATT_CRF(object):
         loop_res = tf.concat([loop_res, att_repre], 0) # 这句话的att结果拼上去
         return batch, loop_res
 
+    def compute_gated_fuse_weight(self, batch):
+        seq_len = self.sequence_lengths[batch]
+        loop_con = lambda idx: tf.cond(idx < seq_len, lambda: True, lambda :False)
+        query = self.gru_output[batch, : seq_len, :]
+        linear = tf.matmul(query, self.W_q)  # (l, 2*h) (2*h, 2*h)  => l, 2*h
+        linear = tf.matmul(linear, tf.transpose(query)) # => l * l
+
+        alpha = tf.nn.softmax(linear, axis=1)  # 计算att权重, (seqlen, seqlen)
+        #print("linear's shape is {}，score's shape is {}, alpha's shape is{}".format(linear.shape, score.shape, alpha.shape))
+        #print("alpha = {}, sum={}".format(alpha, tf.reduce_sum(alpha)))
+        att_repre = tf.matmul(alpha, query)  # (seqlen,seqlen)*(seqlen,hdim) = seqlen*hdim
+
+        padding = tf.zeros([self.max_length - seq_len, 2 * self.hidden_dim], dtype=tf.float32)
+        att_repre = tf.expand_dims(tf.concat([att_repre, padding], axis=0), 0) # 1, maxlen, hdim
+        batch += 1
+        self.batch_att_res[batch] = att_repre
+        return batch
+
+    def gated_fuse_weight(self, query, keys, seq_len):
+        concat = tf.concat([tf.tile(query, (seq_len, 1)) , keys], axis=1)  # seqlen, 4*hidden
+        rij = tf.matmul(concat, self.W_rx) + self.b_rx  # 理论上希望rij是 seqlen, 2*hidden
+
     def loss_op(self):
         """CRF层+loss计算"""
         if self.CRF:

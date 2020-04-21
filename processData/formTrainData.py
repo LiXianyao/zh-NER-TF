@@ -224,7 +224,7 @@ if __name__=="__main__":
 
         python3 -u main.py --mode=demo --train_data=Stock/Stock_data  --demo_model=201905232232 --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl
     
-        python3 main.py --mode=test --demo_model=201906102036 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=50 --lr=0.0005
+        python3 main.py --mode=test --demo_model=201909101944 --train_data=Stock/Stock_data --test_data=Stock/Stock_data --pretrain_embedding=joint4.npy --unk='-unknown-' --word2id=joint4.pkl --clip=10000.0 --batch_size=50 --lr=0.0005
         python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk=-unknown- --word2id=joint4.pkl --clip=10000.0 --epoch=2500 --lr=0.00005 --batch_size=24
     """
     Stock_test_original = "../Stock/Stock_data/test_0910.txt"

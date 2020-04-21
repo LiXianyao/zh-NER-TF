@@ -1,8 +1,8 @@
 from sqlalchemy import create_engine, MetaData, inspect
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
-
-db_engine = create_engine('mysql+pymysql://root:root@10.109.246.90:3306/aux_verification?charset=utf8', convert_unicode=True)
+db_engine = create_engine('mysql+pymysql://aux:Bupt2019~@39.106.90.67:3306/aux_verification_2?charset=utf8', convert_unicode=True)
+#db_engine = create_engine('mysql+pymysql://root:root@10.109.246.90:3306/aux_verification?charset=utf8', convert_unicode=True)
 ins = inspect(db_engine)
 db_metadata = MetaData(db_engine,reflect=True)
 db_inspector = inspect(db_engine)

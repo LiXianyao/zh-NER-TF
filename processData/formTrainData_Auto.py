@@ -20,7 +20,7 @@ Stock_data = {
     "tag": {"</o>": "O", "</ni>": "PROD", "</nf>": "FIE", "</no>": "ORG",
             "</nn>": "NUM", "</np>": "PERC", "</nt>": "TIME", "</nm>": "MERT",
             "</nl>": "LOC", "</nc>": "ISO"},
-    "other": "</o>"
+    "other": ["</o>", "</nl>", "</nn>", "</nm>", "</nc>"]
 }
 
 
@@ -53,10 +53,10 @@ def original2inputFile(original_path, input_path, data_schema=MSRA_data, tag_sch
             """ 计算输出每种label在总label重的占比（O除外）"""
             entity_sum = 0
             for entity in entity_cnt:
-                if entity != other_tag:
+                if entity not in other_tag:
                     entity_sum += entity_cnt[entity]
             for entity in entity_cnt:
-                if entity != other_tag:
+                if entity not in other_tag:
                     percentage = entity_cnt[entity] * 1. / entity_sum
                     entity_cnt[entity] = (entity_cnt[entity], round(percentage, 2))
             logger.info("处理完毕，数据文件总行数%d，实际插入成功行数%d，各类实体的数据情况如下：%s"
@@ -67,9 +67,9 @@ def store_label_file(labels, other_tag, tag_schema, input_path):
     tag_schema = tag_schema[:-1]
     """ 对所有label生成对应的映射文件 """
     label_dict = {}
-    label_dict[labels[other_tag]] = 0 # 第一个必须是O
+    label_dict[labels[other_tag[0]]] = 0 # 第一个必须是O
     for label in labels:
-        if not label == other_tag:
+        if not label == other_tag[0]:
             for loc in tag_schema:
                 loc_label = "%s-%s" % (loc, labels[label])
                 label_dict[loc_label] = len(label_dict)
@@ -88,6 +88,7 @@ def sent2char(word_list, tag_list, other_tag, entity_cnt, labels, tag_schema):
     char_tag_list = []
     for i in range(len(tag_list)):
         tag = tag_list[i]
+        tag = other_tag[0] if tag in other_tag else tag
         word = word_list[i]
         #if tag != other_tag: # 是个标注实体，直接取dict里的
         #    tag = entity_dict[word] if word in entity_dict else tag
@@ -96,7 +97,7 @@ def sent2char(word_list, tag_list, other_tag, entity_cnt, labels, tag_schema):
         for c in range(len(word)):
             char_list.append(word[c])
             prefix = ""
-            if tag != other_tag:  # 不是Other类，则区分BIO编码和BIEO
+            if tag not in other_tag:  # 不是Other类，则区分BIO编码和BIEO
                 if tag_schema == "BIO":
                     prefix = "B-" if not c else "I-"
                 elif tag_schema == "BIEO":
@@ -135,7 +136,7 @@ def line2seq(line, line_cnt, delimiter, other_tag):
     if len(tag_list) < len(word_list) - 1:
         logger.error("第%d行的标注数据解析异常，原因：标签数与拆解后的文本段数不和，文本内容：%s" % (line_cnt, line))
     if len(word_list[-1]):  # 有些人标的数据少了结尾的最后一处，补上个o
-        tag_list.append(other_tag)  # 在去掉了空格的正常情况下，这里的最后一个应该是一个空字符串，不是的话说明没有标注到句尾
+        tag_list.append(other_tag[0])  # 在去掉了空格的正常情况下，这里的最后一个应该是一个空字符串，不是的话说明没有标注到句尾
     if not len(word_list[0].strip()):  # 句首多了个标签
         del tag_list[0]
         del word_list[0]
@@ -147,12 +148,12 @@ if __name__=="__main__":
     #"""
     MSRA_original = "../data_path/original/testright1.txt"
     MSRA_input = "../data_path/MSRA/test_data"
-    Stock_train_original = "../Stock/Stock_data/train_0910.txt"
-    Stock_train_input = "../Stock/Stock_data/train_data_0910"
+    Stock_train_original = "../Stock/Stock_data/train_0921.txt"
+    Stock_train_input = "../Stock/Stock_data/train_data_0922"
 
     original2inputFile(original_path=Stock_train_original, input_path=Stock_train_input, data_schema=Stock_data)
-    Stock_test_original = "../Stock/Stock_data/test_0910.txt"
-    Stock_test_input = "../Stock/Stock_data/test_data_0910"
+    Stock_test_original = "../Stock/Stock_data/test_0921.txt"
+    Stock_test_input = "../Stock/Stock_data/test_data_0922"
     #entity_dict_pre = get_entity_dict(original_path=Stock_train_original, data_schema=Stock_data)
     original2inputFile(original_path=Stock_test_original, input_path=Stock_test_input, data_schema=Stock_data)
 
@@ -178,3 +179,9 @@ if __name__=="__main__":
 
     #[('</nc>', (0, 0.0)), ('</nf>', (242, 0.11)), ('</ni>', (569, 0.26)), ('</nl>', (29, 0.01)), ('</nm>', (11, 0.01)),
     # ('</nn>', (111, 0.05)), ('</no>', (888, 0.41)), ('</np>', (74, 0.03)), ('</nt>', (253, 0.12)), ('</o>', 2285)]
+
+    #0921
+    #[('</nc>', (6, 0.0)), ('</nf>', (729, 0.09)), ('</ni>', (2394, 0.29)), ('</nl>', (244, 0.03)), ('</nm>', (52, 0.01)),
+    # ('</nn>', (328, 0.04)), ('</no>', (3185, 0.39)), ('</np>', (258, 0.03)), ('</nt>', (951, 0.12)), ('</o>', 8468)]
+    #[('</nc>', (0, 0.0)), ('</nf>', (351, 0.1)), ('</ni>', (954, 0.29)), ('</nl>', (108, 0.03)), ('</nm>', (28, 0.01)),
+    # ('</nn>', (128, 0.04)), ('</no>', (1306, 0.39)), ('</np>', (94, 0.03)), ('</nt>', (378, 0.11)), ('</o>', 3532)]
