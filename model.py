@@ -21,6 +21,7 @@ class BiLSTM_CRF(object):
         self.update_embedding = args.update_embedding
         self.dropout_keep_prob = args.dropout
         self.optimizer = args.optimizer
+        self.lr_init = args.lr
         self.lr = args.lr
         self.clip_grad = args.clip
         self.tag2label = tag2label
@@ -35,13 +36,21 @@ class BiLSTM_CRF(object):
         self.config = config
         self.embedding_dim = args.embedding_dim
         self.rho = args.rho
+        self.boundary = args.boundary
+        self.boundary_embedding = 50
 
     def build_graph(self):
         self.add_placeholders()
         self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
-        self.biLSTM_layer_op()
+        self.biLSTM_layer_op(self.word_embeddings)
         self.softmax_pred_op()
-        self.logit_op()
+        self.boundary_op(self.rnn_output)
+
+        logit_input = self.rnn_output
+        if self.boundary:
+            logit_input = tf.concat([self.rnn_output, self.boundary_output],
+                               axis=-1)  # batch, maxtime, 2*hidden + 2*boundary_embedding
+        self.logit_op(logit_input)
         self.loss_op()
         self.trainstep_op()
         self.init_op()
@@ -50,6 +59,8 @@ class BiLSTM_CRF(object):
         """ 为所有的输入变量设置placeholder """
         self.word_ids = tf.placeholder(tf.int32, shape=[None, None], name="word_ids")  # 推测形状：batch*sentlen
         self.labels = tf.placeholder(tf.int32, shape=[None, None], name="labels")  # 推测形状：batch*sentlen
+        self.begins = tf.placeholder(tf.int32, shape=[None, None], name="begins")  # 推测形状：batch*sentlen
+        self.ends = tf.placeholder(tf.int32, shape=[None, None], name="ends")  # 推测形状：batch*sentlen
         self.sequence_lengths = tf.placeholder(tf.int32, shape=[None], name="sequence_lengths")  # 推测形状：batch
         self.var_batch_size = tf.placeholder(tf.int32, shape=[], name="batch_size")  #
         self.max_length = tf.placeholder(tf.int32, shape=[], name="max_length")  #
@@ -67,9 +78,9 @@ class BiLSTM_CRF(object):
             word_embeddings = tf.nn.embedding_lookup(params=_word_embeddings,
                                                      ids=self.word_ids,  # 输入的loc
                                                      name="word_embeddings")
-        self.word_embeddings =  tf.nn.dropout(word_embeddings, self.dropout_pl)  # 套个dropout层后才是最后的embedding层
+        self.word_embeddings = tf.nn.dropout(word_embeddings, self.dropout_pl)  # 套个dropout层后才是最后的embedding层
 
-    def biLSTM_layer_op(self):
+    def biLSTM_layer_op(self, lstm_input):
         """ 定义BiLSTM层的变量(变量作用域"bi-lstm") """
         with tf.variable_scope("bi-lstm"):
             cell_fw = GRUCell(self.hidden_dim) # 前向LSTM单元 cell_fw
@@ -77,7 +88,7 @@ class BiLSTM_CRF(object):
             (output_fw_seq, output_bw_seq), _ = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=cell_fw,
                 cell_bw=cell_bw,
-                inputs=self.word_embeddings,
+                inputs=lstm_input,
                 sequence_length=self.sequence_lengths,
                 dtype=tf.float32)
             """
@@ -88,27 +99,83 @@ class BiLSTM_CRF(object):
                 当句子长度<max_time时，fw_state中的h是output_fw张量中不全为零的最后一行（正向，反向的时候是第一行）
             """
             #print("lstm_out_fw shape = {}".format(output_fw_seq.shape))
-            self.blstm_output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
+            rnn_output = tf.concat([output_fw_seq, output_bw_seq], axis=-1) # 把正反向的输出在depth维度(hidden_state)上接起来concat
+            self.rnn_output = tf.nn.dropout(rnn_output, self.dropout_pl)
 
-    def logit_op(self):
-        output = tf.nn.dropout(self.blstm_output, self.dropout_pl) # BiLSTM的结果过个dropout层
-
+    def logit_op(self, logit_input):
+        hidden_size = logit_input.shape[2]
         with tf.variable_scope("proj"):
+            s = tf.shape(logit_input)
             W = tf.get_variable(name="W",
-                                shape=[2 * self.hidden_dim, self.num_tags],
+                                shape=[hidden_size, self.num_tags],
                                 initializer=tf.contrib.layers.xavier_initializer(),
                                 dtype=tf.float32)
 
-            b = tf.get_variable(name="b",
+            b = tf.get_variable(name="bias",
                                 shape=[self.num_tags],
                                 initializer=tf.zeros_initializer(),
                                 dtype=tf.float32)
             """ BiLSTM的输出后接一层全连接，由[-1, 2*hidden_dim]->[-1, 7（num_tags）] """
-            s = tf.shape(output)
-            output = tf.reshape(output, [-1, 2*self.hidden_dim])
+            output = tf.reshape(logit_input, [-1, hidden_size])
             pred = tf.matmul(output, W) + b
+        self.logits = tf.reshape(pred, [-1, s[1], self.num_tags], name="logits")  # 形状还原回 batch, maxtime, num_tags
+        #print(self.logits.name)
 
-            self.logits = tf.reshape(pred, [-1, s[1], self.num_tags]) # 形状还原回 batch, maxtime, num_tags
+    def boundary_op(self, boundary_input):
+        with tf.variable_scope("boundary"):
+            if not self.boundary:
+                #为确保boundary模式不使用的时候程序正常运行，boundary=False时构造输出规模的zero张量
+                self.logits_begin = tf.zeros(shape=[self.var_batch_size, self.max_length], name="logits_begin", dtype=tf.int32)
+                self.logits_end = tf.zeros(shape=[self.var_batch_size, self.max_length], name="logits_end", dtype=tf.int32)
+                return
+
+            shape_tensor = tf.shape(boundary_input)
+            shape_dimension = boundary_input.shape
+
+            W_begin = tf.get_variable(name="W_begin",
+                                shape=[shape_dimension[2], 2],
+                                initializer=tf.contrib.layers.xavier_initializer(),
+                                dtype=tf.float32)
+
+            b_begin = tf.get_variable(name="bias_begin",
+                                shape=[2],
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.float32)
+            W_end = tf.get_variable(name="W_end",
+                                shape=[shape_dimension[2], 2],
+                                initializer=tf.contrib.layers.xavier_initializer(),
+                                dtype=tf.float32)
+
+            b_end = tf.get_variable(name="bias_end",
+                                shape=[2],
+                                initializer=tf.zeros_initializer(),
+                                dtype=tf.float32)
+
+            begin_embedding = tf.get_variable(name="begin_embedding",
+                                shape=[2, self.boundary_embedding],
+                                initializer=tf.contrib.layers.xavier_initializer(),
+                                dtype=tf.float32)
+
+            end_embedding = tf.get_variable(name="end_embedding",
+                                shape=[2, self.boundary_embedding],
+                                initializer=tf.contrib.layers.xavier_initializer(),
+                                dtype=tf.float32)
+
+            """ BiLSTM的输出后接两层层全连接，分别算两个单分类结果"""
+            boundary_input = tf.reshape(boundary_input, [-1, shape_tensor[2]])
+            pred_begin = tf.matmul(boundary_input, W_begin) + b_begin
+            pred_end = tf.matmul(boundary_input, W_end) + b_end
+            self.logits_begin = tf.reshape(pred_begin, [-1, shape_tensor[1], 2])  # 形状还原回 batch, maxtime, 2
+            self.logits_end = tf.reshape(pred_end, [-1, shape_tensor[1], 2])  # 形状还原回 batch, maxtime, 2
+            self.begin_loss = self.softmax_loss(self.logits_begin, self.begins)
+            self.end_loss = self.softmax_loss(self.logits_end, self.ends)
+            self.logits_begin = tf.argmax(self.logits_begin, axis=-1, name="logits_begin")
+            self.logits_end = tf.argmax(self.logits_end, axis=-1, name="logits_end")
+
+            self.boundary_output= tf.nn.dropout(tf.reshape(tf.concat([tf.matmul(pred_begin, begin_embedding), tf.matmul(pred_end, end_embedding)], axis=1),[-1, shape_tensor[1], 2 * self.boundary_embedding]), self.dropout_pl)
+            tf.summary.scalar("begin_loss", self.begin_loss)
+            tf.summary.scalar("end_loss", self.end_loss)
+
 
     def loss_op(self):
         """CRF层+loss计算"""
@@ -116,24 +183,35 @@ class BiLSTM_CRF(object):
             log_likelihood, self.transition_params = crf_log_likelihood(inputs=self.logits, # 全连接的结果( batch, maxtime, num_tags)
                                                                    tag_indices=self.labels, # labels (batch, seqlen,tag_indice)
                                                                    sequence_lengths=self.sequence_lengths) # seqlen (batch, 1)
-            print(self.transition_params.name)
+            #print(self.transition_params.name)
             """对数似然估计值。由于似然函数本身是概率值，取值0~1，故对数化后就变成负无穷~0，但依然保持单调性。 """
             self.loss = -tf.reduce_mean(log_likelihood)  # 估计值是负数的。故累加到loss就是用减法
             # reduce_mean本身可以指定保留的维度。不指定的情况下计算所有维度的均值，得到一个标量
         else:
-            losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits,
-                                                                    labels=self.labels)
-            mask = tf.sequence_mask(self.sequence_lengths)
-            losses = tf.boolean_mask(losses, mask)
-            self.loss = tf.reduce_mean(losses)
+            self.loss = self.softmax_loss(self.logits, self.labels)
 
-        tf.summary.scalar("loss", self.loss) # 参数可视化：显示这个 标量信息 loss
+        tf.summary.scalar("loss", self.loss)  # 参数可视化：显示这个 标量信息 loss
 
     def softmax_pred_op(self):
         """Softmax层（对比试验，当不使用CRF时才用）"""
         if not self.CRF:
             self.labels_softmax_ = tf.argmax(self.logits, axis=-1)
             self.labels_softmax_ = tf.cast(self.labels_softmax_, tf.int32)
+
+    def softmax_loss(self, inputs, labels):
+        losses = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=inputs,
+                                                                labels=labels)
+        mask = tf.sequence_mask(self.sequence_lengths)
+        losses = tf.boolean_mask(losses, mask)
+        return tf.reduce_mean(losses)
+
+    def _l2loss(self):
+        vars_ = [v for v in tf.trainable_variables() if 'bias' not in v.name
+                 and 'word_embedding' not in v.name and 'real_pos1_embedding' not in v.name and 'real_pos2_embedding' not in v.name]
+        l2loss = tf.multiply(tf.add_n([tf.nn.l2_loss(v) for v in vars_]),
+                             0.001, name='l2loss')
+        tf.summary.scalar("l2loss", l2loss)
+        return l2loss
 
     def trainstep_op(self):
         with tf.variable_scope("train_step"):
@@ -153,7 +231,12 @@ class BiLSTM_CRF(object):
             else:
                 optim = tf.train.GradientDescentOptimizer(learning_rate=self.lr_pl)
 
-            grads_and_vars = optim.compute_gradients(self.loss)  # 将损失传入优化器
+            train_loss = self.loss + self._l2loss()
+            if self.boundary: train_loss += self.begin_loss + self.end_loss
+            tf.summary.scalar("train_loss", train_loss)
+            grads_and_vars = optim.compute_gradients(train_loss)  # 将损失传入优化器
+            #for g, v in grads_and_vars:
+            #    tf.summary.scalar(v.name, g)  # 参数可视化：显示这个 标量信息 loss
             grads_and_vars_clip = [[tf.clip_by_value(g, -self.clip_grad, self.clip_grad), v] for g, v in grads_and_vars]
             self.train_op = optim.apply_gradients(grads_and_vars_clip, global_step=self.global_step)
 
@@ -170,7 +253,8 @@ class BiLSTM_CRF(object):
         self.file_writer = tf.summary.FileWriter(self.summary_path, sess.graph)
 
     def update_lr(self, epoch):
-        self.lr = self.lr / (1 + self.rho * epoch)
+        self.lr = self.lr_init / (1 + self.rho * epoch)
+        tf.summary.scalar("lr", self.lr)
 
     def train(self, train, dev):
         """
@@ -201,6 +285,10 @@ class BiLSTM_CRF(object):
                     self.logger.info("FB1值取得新的最优值%.2f，保存模型"%evaluate_dict["FB1"])
                     saver.save(sess, self.model_path, global_step=epoch)
                     fb1 = evaluate_dict["FB1"]
+                else:
+                    epoch_num = str(epoch + 1) if epoch != None else 'test'
+                    rm_names = os.path.join(self.result_path, '*_' + epoch_num)
+                    os.system("rm {}".format(rm_names))
                 self.update_lr(epoch)
 
     def test(self, test):
@@ -209,8 +297,8 @@ class BiLSTM_CRF(object):
         with tf.Session(config=self.config) as sess:
             self.logger.info('=========== testing ===========')
             saver.restore(sess, self.model_path)
-            label_list, seq_len_list = self.dev_one_epoch(sess, test)
-            self.evaluate(label_list, seq_len_list, test)
+            label_list, seq_len_list, begin_list, end_list = self.dev_one_epoch(sess, test)
+            self.evaluate(label_list, seq_len_list, begin_list, end_list, test)
 
     def demo_one(self, sess, sent):
         """
@@ -220,8 +308,8 @@ class BiLSTM_CRF(object):
         :return:
         """
         label_list = []
-        for seqs, labels in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False, unk=self.unk):
-            label_list_, _ = self.predict_one_batch(sess, seqs, demo=True)
+        for seqs, labels, begins, ends in batch_yield(sent, self.batch_size, self.vocab, self.tag2label, shuffle=False, unk=self.unk):
+            label_list_, _, _, _ = self.predict_one_batch(sess, seqs, demo=True)
             label_list.extend(label_list_)
         label2tag = {}
         for tag, label in self.tag2label.items():
@@ -245,10 +333,10 @@ class BiLSTM_CRF(object):
         start_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
         batches = batch_yield(train, self.batch_size, self.vocab, self.tag2label, shuffle=self.shuffle, unk=self.unk)
         step_num = 1
-        for step, (seqs, labels) in enumerate(batches):
+        for step, (seqs, labels, begins, ends) in enumerate(batches):
             #sys.stdout.write(' processing: {} batch / {} batches.'.format(step + 1, num_batches) + '\r')
             step_num = epoch * num_batches + step + 1
-            feed_dict, _ = self.get_feed_dict(seqs, labels, self.lr, self.dropout_keep_prob) # 为预定义的每个placeholder绑定数据，将当前batch的输入数据组织成list
+            feed_dict, _ = self.get_feed_dict(seqs, labels, begins, ends, self.lr, self.dropout_keep_prob) # 为预定义的每个placeholder绑定数据，将当前batch的输入数据组织成list
             _, loss_train, summary, step_num_ = sess.run([self.train_op, self.loss, self.merged, self.global_step],
                                                          feed_dict=feed_dict) # session执行op运算，并获得对应op的返回值，其中loss和summary结果要显式使用
             if step + 1 == 1 or (step + 1) % 300 == 0 or step + 1 == num_batches:
@@ -260,17 +348,19 @@ class BiLSTM_CRF(object):
 
 
 
-        if epoch % 20 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
+        if epoch % 10 == 0:  # 由于训练集上的变化比较...可想而知，偶尔输出一下就好
             self.logger.info('===========validation / train===========')
-            label_list_train, seq_len_list_train = self.dev_one_epoch(sess, train)
-            self.evaluate(label_list_train, seq_len_list_train, train, epoch)
+            label_list_train, seq_len_list_train, begin_list, end_list = self.dev_one_epoch(sess, train)
+            train_evaluate = self.evaluate(label_list_train, seq_len_list_train, begin_list, end_list, train, epoch)
+            tf.summary.scalar("train_fb1", train_evaluate["FB1"])
 
         self.logger.info('===========validation / test===========')
-        label_list_dev, seq_len_list_dev = self.dev_one_epoch(sess, dev)
-        evaluate_dict = self.evaluate(label_list_dev, seq_len_list_dev, dev, epoch)
+        label_list_dev, seq_len_list_dev, begin_list, end_list = self.dev_one_epoch(sess, dev)
+        evaluate_dict = self.evaluate(label_list_dev, seq_len_list_dev, begin_list, end_list, dev, epoch)
+        tf.summary.scalar("test_fb1",evaluate_dict["FB1"])
         return evaluate_dict, step_num
 
-    def get_feed_dict(self, seqs, labels=None, lr=None, dropout=None):
+    def get_feed_dict(self, seqs, labels=None, begins=None, ends=None, lr=None, dropout=None):
         """
         为预定义的每个placeholder绑定数据，将当前batch的输入数据组织成list
         :param seqs:
@@ -289,6 +379,12 @@ class BiLSTM_CRF(object):
         if labels is not None: # dev / eval时可能为空
             labels_, _, _ = pad_sequences(labels, pad_mark=0) # 同上， 对label id 的list作 padding
             feed_dict["labels:0"] = labels_
+        if begins is not None: # dev / eval时可能为空
+            begins, _, _ = pad_sequences(begins, pad_mark=0) # 同上， 对label id 的list作 padding
+            feed_dict["begins:0"] = begins
+        if ends is not None: # dev / eval时可能为空
+            ends, _, _ = pad_sequences(ends, pad_mark=0) # 同上， 对label id 的list作 padding
+            feed_dict["ends:0"] = ends
         if lr is not None:
             feed_dict["lr_pl:0"] = lr
         if dropout is not None:
@@ -303,12 +399,14 @@ class BiLSTM_CRF(object):
         :param dev:
         :return:
         """
-        label_list, seq_len_list = [], []
-        for seqs, labels in batch_yield(dev, self.batch_size, self.vocab, self.tag2label, shuffle=False, unk=self.unk):
-            label_list_, seq_len_list_ = self.predict_one_batch(sess, seqs)
+        label_list, seq_len_list, begin_list, end_list = [], [], [], []
+        for seqs, labels, begins, ends in batch_yield(dev, self.batch_size, self.vocab, self.tag2label, shuffle=False, unk=self.unk):
+            label_list_, seq_len_list_, begin_list_, end_list_ = self.predict_one_batch(sess, seqs)
             label_list.extend(label_list_)
             seq_len_list.extend(seq_len_list_)
-        return label_list, seq_len_list
+            begin_list.extend(begin_list_)
+            end_list.extend(end_list_)
+        return label_list, seq_len_list, begin_list, end_list
 
     def predict_one_batch(self, sess, seqs, demo=False):
         """
@@ -321,27 +419,28 @@ class BiLSTM_CRF(object):
         """
         feed_dict, seq_len_list = self.get_feed_dict(seqs, dropout=1.0)
 
-        if self.CRF:  # 使用CRF层的情况下，如果直接调用train_op，则CRF层的转移矩阵也会被参与计算，所以只能调用到全连接为止
-            """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
-            logits, transition_params = sess.run([tf.get_default_graph().get_tensor_by_name("proj/Reshape_1:0"),
-                                                  tf.get_default_graph().get_tensor_by_name("transitions:0")],
-                                                 feed_dict=feed_dict)
+        """ 通过session调用网络计算到FC层为止，并取出模型目前的CRF转移矩阵 """
+        logits, transition_params, logits_begin, logits_end = sess.run([tf.get_default_graph().get_tensor_by_name("logits:0"),
+                                              tf.get_default_graph().get_tensor_by_name("transitions:0"),
+                                              tf.get_default_graph().get_tensor_by_name("boundary/logits_begin:0"),
+                                              tf.get_default_graph().get_tensor_by_name("boundary/logits_end:0")],
+                                             feed_dict=feed_dict)
+        if demo:
+            print("发射矩阵如下", logits, logits.shape)
+            print("转移概率矩阵如下", transition_params, transition_params.shape)
+        label_list = []
+        begin_list = []
+        end_list = []
+        for logit, seq_len, begin, end in zip(logits, seq_len_list, logits_begin, logits_end):
+            if not seq_len: continue
+            viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
             if demo:
-                print("发射矩阵如下", logits, logits.shape)
-                print("转移概率矩阵如下", transition_params, transition_params.shape)
-            label_list = []
-            for logit, seq_len in zip(logits, seq_len_list):
-                if not seq_len: continue
-                viterbi_seq, _ = viterbi_decode(logit[:seq_len], transition_params) # 使用转移矩阵对发射概率矩阵（全连接的结果）进行解码，返回评分最高的序列
-                if demo:
-                    print("最优序列：", viterbi_seq, "得分为%.4f"%_)
-                    self.print_viterbi_score(viterbi_seq, logit, transition_params)
-                label_list.append(viterbi_seq)
-            return label_list, seq_len_list
-
-        else:
-            label_list = sess.run(self.labels_softmax_, feed_dict=feed_dict)
-            return label_list, seq_len_list
+                print("最优序列：", viterbi_seq, "得分为%.4f"%_)
+                self.print_viterbi_score(viterbi_seq, logit, transition_params)
+            begin_list.append((begin[:seq_len]))
+            end_list.append((end[:seq_len]))
+            label_list.append(viterbi_seq)
+        return label_list, seq_len_list, begin_list, end_list
 
     def print_viterbi_score(self, viterbi_seq, logit, transition_params):
         j = 0
@@ -369,7 +468,7 @@ class BiLSTM_CRF(object):
                 trans_score = transition_params[now][next]  # 从now状态转移到next状态
 
 
-    def evaluate(self, label_list, seq_len_list, data, epoch=None):
+    def evaluate(self, label_list, seq_len_list, begin_list, end_list, data, epoch=None):
         """
         检验预测序列结果和实际序列是否一致（生成结果的时候已经使用过了句子长度，已经没用了）
         对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
@@ -384,19 +483,20 @@ class BiLSTM_CRF(object):
             label2tag[label] = tag if label != 0 else label # {0:0, 1:"B-PER" ...}
 
         model_predict = []
-        for label_, (sent, tag) in zip(label_list, data): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
+        for label_, (sent, tag, _, _), begin_, end_ in zip(label_list, data, begin_list, end_list): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
             tag_ = [label2tag[label__] for label__ in label_] # 将label转换回tag（O以外）
             sent_res = []
             if len(label_) != len(sent):  # 异常，特别输出长度对不上的情况
                 print("sen len={}, label_len={}, tag_len={}".format(len(sent), len(tag_), len(tag)))
             for i in range(len(sent)):
-                sent_res.append([sent[i], tag[i], tag_[i]])
+                sent_res.append([sent[i], tag[i], tag_[i], begin_[i], end_[i]])
             model_predict.append(sent_res)
         epoch_num = str(epoch+1) if epoch != None else 'test'
         label_path = os.path.join(self.result_path, 'label_' + epoch_num)
+        all_path = os.path.join(self.result_path, 'all_' + epoch_num)
         metric_path = os.path.join(self.result_path, 'result_metric_' + epoch_num)
 
-        metrics = conlleval(model_predict, label_path, metric_path) # 调用脚本计算评估指标，第0行是token的情况，第1行是总体entity评估，余下行是逐个entity评估
+        metrics = conlleval(model_predict, label_path, all_path, metric_path) # 调用脚本计算评估指标，第0行是token的情况，第1行是总体entity评估，余下行是逐个entity评估
         for _ in metrics:
             self.logger.info(_)
         return self.metric2dict(metrics[1])

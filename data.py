@@ -20,14 +20,20 @@ def read_corpus(corpus_path):
     with open(corpus_path, encoding='utf-8') as fr:
         lines = fr.readlines()
     sent_, tag_ = [], []
+    begin_, end_ = [], []
     for line in lines:
         if line != '\n':
             [char, label] = line.strip().split()
             sent_.append(char)
             tag_.append(label)
+            begin_.append(1) if label[0] == "B" else begin_.append(0)
         else:
-            data.append((sent_, tag_))
-            sent_, tag_ = [], []
+            for tdx in range(len(tag_)):
+                tag = tag_[tdx]
+                end_.append(1) if tag != "O" and (tdx + 1 == len(tag_) or tag_[tdx + 1] == "O") else end_.append(0)
+
+            data.append((sent_, tag_, begin_, end_))
+            sent_, tag_, begin_, end_ = [], [], [], []
 
     return data
 
@@ -74,7 +80,7 @@ def vocab_build(vocab_path, corpus_path, min_count):
 def count_oov(word2id, data, log_path, type="train"): ## 统计数据中的oov数量
     oov_set = set()
     char_set = set()
-    for sen_, _ in data:
+    for sen_, _, _, _ in data:
         for word in sen_:
             char_set.add(word)
             if word not in word2id:
@@ -170,20 +176,22 @@ def batch_yield(data, batch_size, vocab, tag2label, shuffle=False, unk='<UNK>'):
     if shuffle:
         random.shuffle(data)
 
-    seqs, labels = [], []
-    for (sent_, tag_) in data:
+    seqs, labels, begins, ends = [], [], [], []
+    for (sent_, tag_, begin_, end_) in data:
         sent_ = sentence2id(sent_, vocab, unk) # 句子里的每个字的id构成的list
         label_ = [tag2label[tag] for tag in tag_] # 句子里每个字的tag的id构成的list
 
         if len(seqs) == batch_size:
-            yield seqs, labels # 积累的数据达到batch_size，返回当前积累的数据，并清空当前batch，下次继续
-            seqs, labels = [], []
+            yield seqs, labels, begins, ends # 积累的数据达到batch_size，返回当前积累的数据，并清空当前batch，下次继续
+            seqs, labels, begins, ends = [], [], [], []
 
         seqs.append(sent_)
         labels.append(label_)
+        begins.append(begin_)
+        ends.append(end_)
 
     if len(seqs) != 0:
         #seqs.extend([[]] * (batch_size-len(seqs)))
         #labels.extend([[]] * (batch_size - len(labels)))
-        yield seqs, labels
+        yield seqs, labels, begins, ends
 

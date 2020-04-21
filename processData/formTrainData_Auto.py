@@ -20,7 +20,7 @@ Stock_data = {
     "tag": {"</o>": "O", "</ni>": "PROD", "</nf>": "FIE", "</no>": "ORG",
             "</nn>": "NUM", "</np>": "PERC", "</nt>": "TIME", "</nm>": "MERT",
             "</nl>": "LOC", "</nc>": "ISO"},
-    "other": ["</o>", "</nl>", "</nn>", "</nm>", "</nc>"]
+    "other": ["</o>"]  # ["</o>", "</nl>", "</nn>", "</nm>", "</nc>"]
 }
 
 
@@ -53,7 +53,7 @@ def original2inputFile(original_path, input_path, data_schema=MSRA_data, tag_sch
             """ 计算输出每种label在总label重的占比（O除外）"""
             entity_sum = 0
             for entity in entity_cnt:
-                if entity not in other_tag:
+                if entity != other_tag:
                     entity_sum += entity_cnt[entity]
             for entity in entity_cnt:
                 if entity not in other_tag:
@@ -148,40 +148,23 @@ if __name__=="__main__":
     #"""
     MSRA_original = "../data_path/original/testright1.txt"
     MSRA_input = "../data_path/MSRA/test_data"
-    Stock_train_original = "../Stock/Stock_data/train_0921.txt"
-    Stock_train_input = "../Stock/Stock_data/train_data_0922"
+    Stock_train_original = "../Stock/Stock_data/train_0930.txt"
+    Stock_train_input = "../Stock/Stock_data/train_data_0930"
 
     original2inputFile(original_path=Stock_train_original, input_path=Stock_train_input, data_schema=Stock_data)
-    Stock_test_original = "../Stock/Stock_data/test_0921.txt"
-    Stock_test_input = "../Stock/Stock_data/test_data_0922"
+    Stock_test_original = "../Stock/Stock_data/test_0930.txt"
+    Stock_test_input = "../Stock/Stock_data/test_data_0930"
     #entity_dict_pre = get_entity_dict(original_path=Stock_train_original, data_schema=Stock_data)
     original2inputFile(original_path=Stock_test_original, input_path=Stock_test_input, data_schema=Stock_data)
-
-    #训练集1484
-    #[('</nc>', (40, 0.01)), ('</nf>', (367, 0.05)), ('</ni>', (1188, 0.17)), ('</nl>', (104, 0.01)), ('</nm>', (77, 0.01)),
-    # ('</nn>', (708, 0.1)), ('</no>', (3006, 0.43)), ('</np>', (421, 0.06)), ('</nt>', (1050, 0.15)), ('</o>', 7117)]
-
-    #测试集
-    #[('</nc>', (10, 0.0)), ('</nf>', (200, 0.06)), ('</ni>', (656, 0.21)), ('</nl>', (52, 0.02)), ('</nm>', (34, 0.01)),
-    # ('</nn>', (302, 0.1)), ('</no>', (1295, 0.41)), ('</np>', (153, 0.05)), ('</nt>', (442, 0.14)), ('</o>', 3224)]
-
-
-    #审核一半后：
-    #[('</nc>', (30, 0.0)), ('</nf>', (439, 0.06)), ('</ni>', (1243, 0.17)), ('</nl>', (126, 0.02)), ('</nm>', (79, 0.01)),
-    # ('</nn>', (738, 0.1)), ('</no>', (3016, 0.42)), ('</np>', (450, 0.06)), ('</nt>', (1058, 0.15)), ('</o>', 7298)]
-
-    #[('</nc>', (21, 0.01)), ('</nf>', (157, 0.05)), ('</ni>', (556, 0.19)), ('</nl>', (33, 0.01)), ('</nm>', (55, 0.02)),
-    # ('</nn>', (269, 0.09)), ('</no>', (1290, 0.44)), ('</np>', (126, 0.04)), ('</nt>', (433, 0.15)), ('</o>', 3039)]
-
-
-    #[('</nc>', (6, 0.0)), ('</nf>', (484, 0.1)), ('</ni>', (1387, 0.28)), ('</nl>', (116, 0.02)), ('</nm>', (24, 0.0)),
-    # ('</nn>', (236, 0.05)), ('</no>', (2098, 0.42)), ('</np>', (145, 0.03)), ('</nt>', (477, 0.1)), ('</o>', 5198)]
-
-    #[('</nc>', (0, 0.0)), ('</nf>', (242, 0.11)), ('</ni>', (569, 0.26)), ('</nl>', (29, 0.01)), ('</nm>', (11, 0.01)),
-    # ('</nn>', (111, 0.05)), ('</no>', (888, 0.41)), ('</np>', (74, 0.03)), ('</nt>', (253, 0.12)), ('</o>', 2285)]
 
     #0921
     #[('</nc>', (6, 0.0)), ('</nf>', (729, 0.09)), ('</ni>', (2394, 0.29)), ('</nl>', (244, 0.03)), ('</nm>', (52, 0.01)),
     # ('</nn>', (328, 0.04)), ('</no>', (3185, 0.39)), ('</np>', (258, 0.03)), ('</nt>', (951, 0.12)), ('</o>', 8468)]
     #[('</nc>', (0, 0.0)), ('</nf>', (351, 0.1)), ('</ni>', (954, 0.29)), ('</nl>', (108, 0.03)), ('</nm>', (28, 0.01)),
     # ('</nn>', (128, 0.04)), ('</no>', (1306, 0.39)), ('</np>', (94, 0.03)), ('</nt>', (378, 0.11)), ('</o>', 3532)]
+
+    #0930
+    #[('</nc>', (6, 0.0)), ('</nf>', (1151, 0.05)), ('</ni>', (3596, 0.15)), ('</nl>', (341, 0.01)), ('</nm>', (108, 0.0)),
+    # ('</nn>', (459, 0.02)), ('</no>', (4599, 0.19)), ('</np>', (405, 0.02)), ('</nt>', (1441, 0.06)), ('</o>', 12662)]
+    #[('</nc>', (0, 0.0)), ('</nf>', (517, 0.05)), ('</ni>', (1594, 0.15)), ('</nl>', (188, 0.02)), ('</nm>', (42, 0.0)),
+    # ('</nn>', (183, 0.02)), ('</no>', (1959, 0.18)), ('</np>', (161, 0.01)), ('</nt>', (653, 0.06)), ('</o>', 5504)]
