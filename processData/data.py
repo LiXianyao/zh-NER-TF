@@ -23,8 +23,13 @@ def read_corpus(corpus_path):
     begin_, end_ = [], []
     for line in lines:
         if line != '\n':
-            [char, label] = line.strip().split()
-            sent_.append(char)
+            line = line.strip()
+            try:
+                [char, label] = line.split(" ")
+            except:
+                if line[0:2] == "  ":
+                    char, label = " ", line[2:]
+            sent_.append(char.lower())
             tag_.append(label)
             begin_.append(1) if label[0] == "B" else begin_.append(0)
         else:
@@ -119,7 +124,7 @@ def sentence2id(sent, word2id, unk='<UNK>'):
     return sentence_id
 
 
-def read_dictionary(vocab_path):
+def read_dictionary(vocab_path, unk_mark):
     """
 
     :param vocab_path:
@@ -129,7 +134,11 @@ def read_dictionary(vocab_path):
     with open(vocab_path, 'rb') as fr:
         word2id = pickle.load(fr)
     print('vocab_size:', len(word2id))
-    return word2id
+    has_unk = True
+    if unk_mark not in word2id:
+        word2id[unk_mark] = len(word2id)
+        has_unk = False
+    return word2id, has_unk
 
 
 def random_embedding(vocab, embedding_dim):

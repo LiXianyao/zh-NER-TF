@@ -1,13 +1,12 @@
 #-*-encoding:utf8-*-#
 import tensorflow as tf
 import numpy as np
-import os, argparse, time, random
+import os, argparse
 from model import BiLSTM_CRF
 from BiGRU_ATT_CRF import BiGRU_ATT_CRF
-from CNN_BiGRU_ATT_CRF import CNN_BiGRU_ATT_CRF
-from utils import str2bool, get_logger, get_entity, get_multiple_entity
-from data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
-
+from utils import str2bool, get_logger, get_multiple_entity
+from processData.data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
+import time
 
 ## Session configuration
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
@@ -39,14 +38,14 @@ parser.add_argument('--demo_model', type=str, default='1521112368', help='model 
 parser.add_argument('--unk', type=str, default='<UNK>', help='the tag for unknown word when a word is missing in the word2id')
 parser.add_argument('--word2id', type=str, default='word2id.pkl', help='word2id file name(same dir with the train_data)')
 parser.add_argument('--restore', type=str2bool, default=False, help='use exisiting checkpoint.')
-parser.add_argument('--rho', type=float, default=0.0002, help='learning rate decrease speed by each epoch')
+parser.add_argument('--rho', type=float, default=0.002, help='learning rate decrease speed by each epoch')
 parser.add_argument('--boundary', type=str2bool, default=True, help='training boundary loss')
 args = parser.parse_args()
 
 
 ## get char embeddings
 u""" 读取预处理的word2id文件（实际上是每个字分配一个id) """
-word2id = read_dictionary(os.path.join('.', args.train_data, args.word2id))
+word2id, has_unk = read_dictionary(os.path.join('.', args.train_data, args.word2id), args.unk)
 
 u""" 随机初始化或者加载预训练的字符embedding """
 if args.pretrain_embedding == 'random':
@@ -54,15 +53,16 @@ if args.pretrain_embedding == 'random':
 else:
     embedding_path = os.path.join('.', args.train_data, args.pretrain_embedding)
     embeddings = np.array(np.load(embedding_path), dtype='float32')
-    print(embeddings.shape)
     args.embedding_dim = embeddings.shape[1]
     #args.hidden_dim = args.embedding_dim  # 修正hidden_state的长度
-
+    if not has_unk:
+        unk_embedding = np.random.uniform(-0.25, 0.25, (1, args.embedding_dim))
+        embeddings = np.vstack((embeddings, unk_embedding))
 
 ## read corpus and get training data
 if args.mode != 'demo':
-    train_path = os.path.join('.', args.train_data, 'train_data_1012')
-    test_path = os.path.join('.', args.test_data, 'test_data_1012')
+    train_path = os.path.join('.', args.train_data, 'train_data_0520')
+    test_path = os.path.join('.', args.test_data, 'test_data_0520')
     """ 取出训练数据、测试数据，格式： 句子数个二元组，每个二元组( [字list]， [tag list] ) """
     train_data = read_corpus(train_path)
     test_data = read_corpus(test_path); test_size = len(test_data)
@@ -106,16 +106,8 @@ if args.mode == 'train':
     count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
     count_oov(word2id, test_data, log_path, type="test_data")
 
-    model = CNN_BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
-
-    ## hyperparameters-tuning, split train/dev
-    # dev_data = train_data[:5000]; dev_size = len(dev_data)
-    # train_data = train_data[5000:]; train_size = len(train_data)
-    # print("train data: {0}\ndev data: {1}".format(train_size, dev_size))
-    # model.train(train=train_data, dev=dev_data)
-
-    ## train model on the whole training data
     print("train data: {}".format(len(train_data)))
     model.train(train=train_data, dev=test_data)  # use test_data as the dev_data to see overfitting phenomena
 
@@ -135,11 +127,11 @@ elif args.mode == 'demo':
     print(ckpt_file)
     paths['model_path'] = ckpt_file
     model = BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
-    model.build_graph()
-    saver = tf.train.Saver()
+
+    saver = tf.train.import_meta_graph(ckpt_file + ".meta")
     with tf.Session(config=config) as sess:
         print('============= demo =============')
-        saver.restore(sess, ckpt_file)
+        saver.restore(sess, model_path)
         while(1):
             print('Please input your sentence:')
             demo_sent = input()
