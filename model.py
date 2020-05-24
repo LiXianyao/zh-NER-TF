@@ -1,13 +1,11 @@
-import numpy as np
-import os, time, sys
+import os, time
 import tensorflow as tf
-from tensorflow.contrib.rnn import LSTMCell, GRUCell
+from tensorflow.contrib.rnn import GRUCell
 from tensorflow.contrib.crf import crf_log_likelihood
 from tensorflow.contrib.crf import viterbi_decode
-from data import pad_sequences, batch_yield
+from processData.data import pad_sequences, batch_yield
 from utils import get_logger
 from eval import conlleval
-import math
 
 
 class BiLSTM_CRF(object):
@@ -41,7 +39,7 @@ class BiLSTM_CRF(object):
 
     def build_graph(self):
         self.add_placeholders()
-        self.lookup_layer_op() # 定义embedding层的变量（变量作用域"word")
+        self.lookup_layer_op()  # 定义embedding层的变量（变量作用域"word")
         self.biLSTM_layer_op(self.word_embeddings)
         self.softmax_pred_op()
         self.boundary_op(self.rnn_output)
@@ -479,18 +477,26 @@ class BiLSTM_CRF(object):
         :return:
         """
         label2tag = {}
+        label2tag_ncls = {}
         for tag, label in self.tag2label.items():
             label2tag[label] = tag if label != 0 else label # {0:0, 1:"B-PER" ...}
+            label2tag_ncls[label] = tag.split("-")[0] + "-ENTITY" if label != 0 else label # {0:0, 1:"B-ENTITY", 2:"I-ENTITY" ...}
 
         model_predict = []
+        model_predict_ncls = []
         for label_, (sent, tag, _, _), begin_, end_ in zip(label_list, data, begin_list, end_list): # 对每个验证数据，生成[原始数据，原始标签，预测标签]三元组
-            tag_ = [label2tag[label__] for label__ in label_] # 将label转换回tag（O以外）
+            tag_ = [label2tag[label__] for label__ in label_]  # 将label转换回tag（O以外）
+            tag_ncls = [t.split("-")[0] + "-ENTITY" if t != 'O' else t for t in tag]
+            tag_ncls_ = [label2tag_ncls[label__] for label__ in label_]  # 将label转换回tag（O以外）
             sent_res = []
+            sent_res_ncls = []
             if len(label_) != len(sent):  # 异常，特别输出长度对不上的情况
                 print("sen len={}, label_len={}, tag_len={}".format(len(sent), len(tag_), len(tag)))
             for i in range(len(sent)):
                 sent_res.append([sent[i], tag[i], tag_[i], begin_[i], end_[i]])
+                sent_res_ncls.append([sent[i], tag_ncls[i], tag_ncls_[i], begin_[i], end_[i]])
             model_predict.append(sent_res)
+            model_predict_ncls.append(sent_res_ncls)
         epoch_num = str(epoch+1) if epoch != None else 'test'
         label_path = os.path.join(self.result_path, 'label_' + epoch_num)
         all_path = os.path.join(self.result_path, 'all_' + epoch_num)
@@ -499,6 +505,15 @@ class BiLSTM_CRF(object):
         metrics = conlleval(model_predict, label_path, all_path, metric_path) # 调用脚本计算评估指标，第0行是token的情况，第1行是总体entity评估，余下行是逐个entity评估
         for _ in metrics:
             self.logger.info(_)
+
+        if epoch_num == "test":
+            label_path = os.path.join(self.result_path, 'label_{}_ncls'.format(epoch_num))
+            all_path = os.path.join(self.result_path, 'all_{}_ncls'.format(epoch_num))
+            metric_path = os.path.join(self.result_path, 'result_metric_{}_ncls'.format(epoch_num))
+            metrics_ncls = conlleval(model_predict_ncls, label_path, all_path, metric_path)
+            for _ in metrics_ncls:
+                self.logger.info(_)
+
         return self.metric2dict(metrics[1])
 
     def metric2dict(self, evaluate):
