@@ -3,13 +3,15 @@ import tensorflow as tf
 import numpy as np
 import os, argparse
 from model import BiLSTM_CRF
-from BiGRU_ATT_CRF import BiGRU_ATT_CRF
+from CNN_BiGRU_ATT_CRF import CNN_BiGRU_ATT_CRF
 from utils import str2bool, get_logger, get_multiple_entity
 from processData.data import read_corpus, read_dictionary, tag2label, random_embedding, count_oov
 import time
 
+#Model = CNN_BiGRU_ATT_CRF
+Model = BiLSTM_CRF
 ## Session configuration
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # default: 0
 config = tf.ConfigProto()
 config.gpu_options.allow_growth = True # 按需分配GPU
@@ -106,7 +108,7 @@ if args.mode == 'train':
     count_oov(word2id, train_data, log_path, type="train_data")  # 统计输出oov
     count_oov(word2id, test_data, log_path, type="test_data")
 
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = Model(args, embeddings, tag2label, word2id, paths, config=config)
     model.build_graph()
     print("train data: {}".format(len(train_data)))
     model.train(train=train_data, dev=test_data)  # use test_data as the dev_data to see overfitting phenomena
@@ -116,7 +118,7 @@ elif args.mode == 'test':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    model = BiLSTM_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = Model(args, embeddings, tag2label, word2id, paths, config=config)
     #model.build_graph()
     print("test data: {}".format(test_size))
     model.test(test_data)
@@ -126,7 +128,7 @@ elif args.mode == 'demo':
     ckpt_file = tf.train.latest_checkpoint(model_path)
     print(ckpt_file)
     paths['model_path'] = ckpt_file
-    model = BiGRU_ATT_CRF(args, embeddings, tag2label, word2id, paths, config=config)
+    model = Model(args, embeddings, tag2label, word2id, paths, config=config)
 
     saver = tf.train.import_meta_graph(ckpt_file + ".meta")
     with tf.Session(config=config) as sess:
