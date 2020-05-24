@@ -148,12 +148,12 @@ if __name__=="__main__":
     #"""
     MSRA_original = "../data_path/original/testright1.txt"
     MSRA_input = "../data_path/MSRA/test_data"
-    Stock_train_original = "../Stock/Stock_data/train_0930.txt"
-    Stock_train_input = "../Stock/Stock_data/train_data_0930"
+    Stock_train_original = "../Stock/Stock_data/train_0520.txt"
+    Stock_train_input = "../Stock/Stock_data/train_data_0520"
 
     original2inputFile(original_path=Stock_train_original, input_path=Stock_train_input, data_schema=Stock_data)
-    Stock_test_original = "../Stock/Stock_data/test_0930.txt"
-    Stock_test_input = "../Stock/Stock_data/test_data_0930"
+    Stock_test_original = "../Stock/Stock_data/test_0520.txt"
+    Stock_test_input = "../Stock/Stock_data/test_data_0520"
     #entity_dict_pre = get_entity_dict(original_path=Stock_train_original, data_schema=Stock_data)
     original2inputFile(original_path=Stock_test_original, input_path=Stock_test_input, data_schema=Stock_data)
 
@@ -168,3 +168,22 @@ if __name__=="__main__":
     # ('</nn>', (459, 0.02)), ('</no>', (4599, 0.19)), ('</np>', (405, 0.02)), ('</nt>', (1441, 0.06)), ('</o>', 12662)]
     #[('</nc>', (0, 0.0)), ('</nf>', (517, 0.05)), ('</ni>', (1594, 0.15)), ('</nl>', (188, 0.02)), ('</nm>', (42, 0.0)),
     # ('</nn>', (183, 0.02)), ('</no>', (1959, 0.18)), ('</np>', (161, 0.01)), ('</nt>', (653, 0.06)), ('</o>', 5504)]
+
+    #1012
+    #[('</nc>', (4, 0.0)), ('</nf>', (1997, 0.05)), ('</ni>', (5271, 0.14)), ('</nl>', (487, 0.01)), ('</nm>', (160, 0.0)),
+    #  ('</nn>', (629, 0.02)), ('</no>', (6825, 0.18)), ('</np>', (631, 0.02)), ('</nt>', (2327, 0.06)), ('</o>', 19178)]
+    #[('</nc>', (5, 0.0)), ('</nf>', (828, 0.05)), ('</ni>', (2230, 0.14)), ('</nl>', (209, 0.01)), ('</nm>', (57, 0.0)),
+    #  ('</nn>', (223, 0.01)), ('</no>', (2814, 0.18)), ('</np>', (255, 0.02)), ('</nt>', (941, 0.06)), ('</o>', 7951)]
+
+    #1217
+    #[('</nc>', (8, 0.0)), ('</nf>', (2439, 0.05)), ('</ni>', (8533, 0.18)), ('</nl>', (622, 0.01)), ('</nm>', (341, 0.01)),
+    # ('</nn>', (593, 0.01)), ('</no>', (8098, 0.17)), ('</np>', (737, 0.02)), ('</nt>', (2377, 0.05)), ('</o>', 24449)]
+    #[('</nc>', (2, 0.0)), ('</nf>', (1137, 0.06)), ('</ni>', (3701, 0.18)), ('</nl>', (235, 0.01)), ('</nm>', (166, 0.01)),
+    # ('</nn>', (308, 0.01)), ('</no>', (3326, 0.16)), ('</np>', (275, 0.01)), ('</nt>', (1003, 0.05)), ('</o>', 10502)]
+
+    #0520
+    #python3 -u main.py --mode=train --train_data=Stock/Stock_data --test_data=Stock/Stock_data --update_embedding=True --pretrain_embedding=joint4.npy --unk=-unknown- --word2id=joint4.pkl --clip=1.0 --lr=0.01 --batch_size=128 --rho=0.1 --dropout=0.8 --boundary=True  --epoch=300
+    #[('</nc>', (90, 0.0)), ('</nf>', (5161, 0.04)), ('</ni>', (21726, 0.16)), ('</nl>', (1368, 0.01)), ('</nm>', (987, 0.01)),
+    # ('</nn>', (3766, 0.03)), ('</no>', (24108, 0.18)), ('</np>', (2172, 0.02)), ('</nt>', (7807, 0.06)), ('</o>', 68913)]
+    #[('</nc>', (22, 0.0)), ('</nf>', (2351, 0.04)), ('</ni>', (9169, 0.16)), ('</nl>', (711, 0.01)), ('</nm>', (374, 0.01)),
+    # ('</nn>', (1526, 0.03)), ('</no>', (10289, 0.18)), ('</np>', (883, 0.02)), ('</nt>', (3525, 0.06)), ('</o>', 29705)]
